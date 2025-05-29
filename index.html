@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEDGERA</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <?!= include('Style'); ?>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h3>Ledgera App</h3>
+        </div>
+        <ul class="sidebar-menu">
+            <li><a href="#" data-page="dashboard" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+            <details class="sidebar-dropdown">
+                <summary><i class="fas fa-box-open"></i> Produk</summary>
+                <ul>
+                    <li><a href="#" data-page="products"><i class="fas fa-boxes"></i> Daftar Produk</a></li>
+                    <li><a href="#" data-page="productForm" style="display:none;"><i class="fas fa-plus"></i> Tambah Produk</a></li> <li><a href="#" data-page="categories"><i class="fas fa-tags"></i> Kategori Produk</a></li>
+                    <li><a href="#" data-page="units"><i class="fas fa-ruler-combined"></i> Unit Pengukuran</a></li>
+                    <li><a href="#" data-page="base-units"><i class="fas fa-balance-scale"></i> Unit Dasar</a></li>
+                </ul>
+            </details>
+            
+            <li><a href="#" data-page="adjustments"><i class="fa-solid fa-truck-ramp-box"></i> Penyesuaian</a></li>
+            <li><a href="#" data-page="quotations"><i class="fa-solid fa-file-contract"></i> Penawaran</a></li>
+            
+            <details class="sidebar-dropdown">
+                <summary><i class="fas fa-shopping-cart"></i> Pembelian</summary>
+                <ul>
+                    <li><a href="#" data-page="purchases"><i class="fas fa-clipboard-list"></i> Daftar Pembelian</a></li>
+                    <li><a href="#" data-page="purchase-returns"><i class="fas fa-undo-alt"></i> Retur Pembelian</a></li>
+                </ul>
+            </details>
+            
+            <details class="sidebar-dropdown">
+            <summary><i class="fas fa-cash-register"></i> Penjualan</summary>
+              <ul>
+                  <li><a href="#" data-page="sales"><i class="fas fa-file-invoice-dollar"></i> Daftar Penjualan</a></li>
+                  <li><a href="#" data-page="sales-returns"><i class="fa-solid fa-rotate-right"></i> Retur Penjualan</a></li>
+              </ul>
+            </details>
+
+            <li><a href="#" data-page="transfers"><i class="fas fa-exchange-alt"></i> Transfer</a></li>
+            
+            <details class="sidebar-dropdown">
+            <summary><i class="fas fa-money-bill-wave"></i> Pengeluaran</summary>
+              <ul>
+                  <li><a href="#" data-page="expenses"><i class="fas fa-file-invoice"></i> Daftar Pengeluaran</a></li>
+                  <li><a href="#" data-page="expensesCategories"><i class="fas fa-tags"></i> Kategori Pengeluaran</a></li>
+              </ul>
+            </details>
+
+            <details class="sidebar-dropdown">
+            <summary><i class="fas fa-users"></i> Orang</summary>
+                <ul>
+                    <li><a href="#" data-page="suppliers"><i class="fas fa-truck-loading"></i> Pemasok</a></li>
+                    <li><a href="#" data-page="customers"><i class="fas fa-user-friends"></i> Pelanggan</a></li>
+                </ul>
+            </details>
+
+            <li><a href="#" data-page="warehouses"><i class="fas fa-warehouse"></i> Gudang</a></li>
+            <li><a href="#" data-page="reports"><i class="fas fa-chart-line"></i> Laporan</a></li>
+            <li><a href="#" data-page="currencies"><i class="fas fa-coins"></i> Mata Uang</a></li>
+            <details class="sidebar-dropdown">
+            <summary><i class="fas fa-cogs"></i> Pengaturan</summary>
+                <ul>
+                    <li><a href="#" data-page="settings"><i class="fa-solid fa-sliders"></i> Pengaturan Sistem</a></li>
+                </ul>
+            </details>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h1 id="pageTitle">Dashboard</h1>
+            <div class="user-info"></div>
+        </div>
+
+        <div class="content-area">
+            <div id="dashboardPage" class="page-section active">
+                <p>Ini adalah ringkasan cepat dari aktivitas Anda. Informasi utama akan ditampilkan di sini.</p>
+                <div class="dashboard-widgets">
+                    <div class="widget">
+                        <h3>Total Produk</h3>
+                        <p id="totalProducts">-</p>
+                    </div>
+                    <div class="widget">
+                        <h3>Produk Terlaris</h3>
+                        <p id="topProduct">-</p>
+                    </div>
+                    <div class="widget">
+                        <h3>Stok Rendah</h3>
+                        <p id="lowStock">-</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="productsPage" class="page-section">
+                <div class="list-page-controls">
+                    <div class="search-bar-container">
+                        <label for="searchBar" class="visually-hidden">Cari Produk:</label>
+                        <div class="input-with-icon">
+                          <i class="fas fa-search search-bar-icon-prefix"></i>
+                         <input type="text" id="searchBar" class="input-field-with-icon-prefix" placeholder="Cari">
+                        </div>
+                    </div>
+
+                    <div class="action-buttons-container">
+                        <button id="filterUnitButton" title="Filter berdasarkan Unit">
+                            <i class="fa-solid fa-filter"></i> </button>
+                        <button id="addProductButton" class="add-new-button">
+                            <i class="fas fa-plus"></i> Tambah Produk Baru
+                        </button>
+                    </div>
+                </div>
+
+                <table id="productTable">
+                    <thead>
+                        <tr>
+                            <th>Nama</th>
+                            <th>Kode</th>
+                            <th>Harga Jual</th>
+                            <th>Unit</th> <th>Stok</th>
+                            <th>Dibuat Pada</th>
+                            <th>Aksi</th> </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+                <div class="pagination-controls-container"></div>
+            </div>
+
+            <div id="productFormPage" class="page-section">
+                <button type="button" id="backToListButton" class="back-button">
+                    <i class="fas fa-arrow-left"></i> Kembali ke Daftar Produk
+                </button>
+                <h2 id="productFormTitle">Tambah Produk Baru</h2>
+                <form id="productForm" class="product-detail-form">
+                    <input type="hidden" id="productId">
+
+                    <div class="form-main-layout">
+                        <div class="form-column-main">
+                            <div class="form-row">
+                                <div class="form-group form-group-half">
+                                    <label for="productName">Nama Produk <span class="required-asterisk">*</span>:</label>
+                                    <input type="text" id="productName" required>
+                                </div>
+                                <div class="form-group form-group-half">
+                                    <label for="productCode">Kode Produk <span class="required-asterisk">*</span>:</label>
+                                    <input type="text" id="productCode" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group form-group-half">
+                                    <label for="productCategory">Kategori Produk <span class="required-asterisk">*</span>:</label>
+                                    <select id="productCategory" required>
+                                      <option value="">Pilih Kategori</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">   
+                                <div class="form-group form-group-half">
+                                    <label for="productUnitProduct">Unit Produk (Dasar) <span class="required-asterisk">*</span>:</label>
+                                    <select id="productUnitProduct" required>
+                                        <option value="">Pilih Unit Dasar</option>
+                                        <option value="pieces">Pieces</option>
+                                        <option value="gram">Gram</option>
+                                        <option value="ml">Mililiter</option>
+                                        </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group form-group-half">
+                                    <label for="productSalesUnit">Unit Penjualan <span class="required-asterisk">*</span>:</label>
+                                    <select id="productSalesUnit" required>
+                                        <option value="">Pilih Unit Penjualan</option>
+                                        <option value="box">Box</option>
+                                        <option value="lusin">Lusin</option>
+                                        </select>
+                                </div>
+                                <div class="form-group form-group-half">
+                                    <label for="productPurchaseUnit">Unit Pembelian <span class="required-asterisk">*</span>:</label>
+                                    <select id="productPurchaseUnit" required>
+                                        <option value="">Pilih Unit Pembelian</option>
+                                        <option value="dus">Dus</option>
+                                        <option value="karung">Karung</option>
+                                        </select>
+                                </div>
+                            </div>
+                             <div class="form-row">
+                                <div class="form-group form-group-half">
+                                    <label for="productPurchaseQuantityLimit">Batas Kuantitas Pembelian:</label>
+                                    <input type="number" id="productPurchaseQuantityLimit" min="0">
+                                </div>
+                                <div class="form-group form-group-half">
+                                    <label for="productNotes">Catatan:</label>
+                                    <textarea id="productNotes" rows="3"></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-column-aside">
+                            <div class="form-group">
+                                <label for="productWarehouse">Gudang <span class="required-asterisk">*</span>:</label>
+                                <select id="productWarehouse" required>
+                                    <option value="">Pilih Gudang</option>
+                                    <option value="GUDANG UTAMA">Gudang Utama</option>
+                                    </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="productSupplier">Pemasok <span class="required-asterisk">*</span>:</label>
+                                <select id="productSupplier" required>
+                                    <option value="">Pilih Pemasok</option>
+                                    <option value="SUPPLIER A">Supplier A</option>
+                                    </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="productStatus">Status Produk <span class="required-asterisk">*</span>:</label>
+                                <select id="productStatus" required>
+                                    <option value="Diterima" selected>Diterima</option>
+                                    <option value="Ditahan">Ditahan</option>
+                                    <option value="Dipesan">Dipesan</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="form-separator">
+
+                    <div class="form-section-fullwidth">
+                        <div class="form-row">
+                             <div class="form-group form-group-quarter">
+                                <label for="productCostPrice">Harga Pokok <span class="required-asterisk">*</span>:</label>
+                                <input type="number" id="productCostPrice" min="0" step="any" required>
+                            </div>
+                            <div class="form-group form-group-quarter">
+                                <label for="productSellingPrice">Harga Jual <span class="required-asterisk">*</span>:</label>
+                                <input type="number" id="productSellingPrice" min="0" step="any" required>
+                            </div>
+                            <div class="form-group form-group-quarter">
+                                <label for="productStockMinimum">Stok Minimum:</label>
+                                <input type="number" id="productStockMinimum" min="0">
+                            </div>
+                            <div class="form-group form-group-quarter">
+                                <label for="productSalesTax">Pajak Penjualan (%):</label>
+                                <input type="number" id="productSalesTax" min="0" max="100" step="any" placeholder="cth: 10 untuk 10%">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group form-group-half">
+                                <label for="productTaxType">Tipe Pajak <span class="required-asterisk">*</span>:</label>
+                                <select id="productTaxType" required>
+                                    <option value="Eksklusif" selected>Eksklusif</option>
+                                    <option value="Inklusif">Inklusif</option>
+                                </select>
+                            </div>
+                            <div class="form-group form-group-half">
+                                <label for="productInitialStock">Tambahkan Kuantitas Stok <span class="required-asterisk">*</span>:</label>
+                                <input type="number" id="productInitialStock" min="0" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" id="submitButton"><i class="fas fa-save"></i> Simpan Produk</button>
+                        <button type="button" id="resetButton" class="reset-button"><i class="fas fa-redo"></i> Reset Form</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="categoriesPage" class="page-section">
+                <div class="list-page-controls"> <div class="search-bar-container">
+                  <label for="categorySearchBar" class="visually-hidden">Cari Kategori:</label>
+                    <div class="input-with-icon">
+                        <i class="fas fa-search search-bar-icon-prefix"></i>
+                        <input type="text" id="categorySearchBar" class="input-field-with-icon-prefix" placeholder="Cari">
+                    </div>
+                </div>
+                <div class="action-buttons-container">
+                    <button id="addCategoryButton" class="add-new-button">
+                        <i class="fas fa-plus"></i> Tambah Kategori Baru
+                    </button>
+                </div>
+            </div>
+
+            <table id="categoriesTable">
+                <thead>
+                    <tr>
+                        <th>Nama Kategori</th>
+                        <th>Jumlah Produk</th>
+                        <th style="width: 150px;">Aksi</th> </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+            </div>
+
+            <div id="categoryFormPage" class="page-section" style="display: none;">
+                <button type="button" id="backToCategoryListButton" class="back-button">
+                    <i class="fas fa-arrow-left"></i> Kembali ke Daftar Kategori
+                </button>
+                <h2 id="categoryFormTitle">Tambah Kategori Baru</h2>
+                <form id="categoryForm">
+                    <input type="hidden" id="categoryIdInput"> <div class="form-group">
+                        <label for="categoryNameInput">Nama Kategori <span class="required-asterisk">*</span>:</label>
+                        <input type="text" id="categoryNameInput" required>
+                    </div>
+                    <div class="button-group">
+                        <button type="submit" id="submitCategoryButton"><i class="fas fa-save"></i> Simpan Kategori</button>
+                        <button type="button" id="resetCategoryFormButton" class="reset-button"><i class="fas fa-redo"></i> Reset</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div id="unitsPage" class="page-section">
+                <p>Kelola unit pengukuran produk di sini (misalnya, pcs, lusin, kg).</p>
+            </div>
+            <div id="base-unitsPage" class="page-section">
+                <p>Definisikan unit dasar yang akan menjadi acuan konversi.</p>
+            </div>
+            <div id="adjustmentsPage" class="page-section">
+                <p>Catat penyesuaian stok manual (misalnya, stok rusak, retur).</p>
+            </div>
+            <div id="quotationsPage" class="page-section">
+                <p>Buat dan kelola penawaran kamu disini.</p>
+            </div>
+            <div id="purchasesPage" class="page-section">
+                <p>Catat semua transaksi pembelian barang di sini.</p>
+            </div>
+            <div id="purchase-returnsPage" class="page-section">
+                <p>Kelola pengembalian barang dari pembelian.</p>
+            </div>
+            <div id="salesPage" class="page-section">
+                <p>Catat semua transaksi penjualan barang di sini.</p>
+            </div>
+            <div id="sales-returnsPage" class="page-section">
+                <p>Kelola pengembalian barang dari penjualan.</p>
+            </div>
+            <div id="transfersPage" class="page-section">
+                <p>Catat perpindahan stok antar gudang atau lokasi.</p>
+            </div>
+            <div id="expensesPage" class="page-section">
+                <p>Catat semua pengeluaran operasional perusahaan.</p>
+            </div>
+            <div id="expenseCategoriesPage" class="page-section">
+                <p>Buat daftar kategori pengeluaran operasional perusahaan.</p>
+            </div>
+            <div id="suppliersPage" class="page-section">
+                <p>Kelola daftar pemasok barang.</p>
+            </div>
+            <div id="customersPage" class="page-section">
+                <p>Kelola daftar pelanggan Anda.</p>
+            </div>
+            <div id="warehousesPage" class="page-section">
+                <p>Kelola daftar gudang atau lokasi penyimpanan stok.</p>
+            </div>
+            <div id="reportsPage" class="page-section">
+                <p>Lihat berbagai laporan bisnis Anda di sini.</p>
+            </div>
+            <div id="currenciesPage" class="page-section">
+                <p>Kelola pengaturan mata uang yang digunakan.</p>
+            </div>
+            <div id="settingsPage" class="page-section">
+                <p>Sesuaikan pengaturan umum aplikasi (nama perusahaan, logo, dll.).</p>
+            </div>
+        </div>
+    </div>
+
+    <?!= include('js-shared'); ?>
+    <?!= include('js-products'); ?>
+    <?!= include('js-categories'); ?>
+    <?!= include('js-units-placeholder'); ?>
+    <?!= include('js-base-units-placeholder'); ?>
+    <?!= include('js-adjustments-placeholder'); ?>
+    <?!= include('js-quotations-placeholder'); ?>
+    <?!= include('js-purchases-placeholder'); ?>
+    <?!= include('js-purchase-returns-placeholder'); ?>
+    <?!= include('js-sales-placeholder'); ?>
+    <?!= include('js-sales-returns-placeholder'); ?>
+    <?!= include('js-transfers-placeholder'); ?>
+    <?!= include('js-expenses-placeholder'); ?>
+    <?!= include('js-expense-categories-placeholder'); ?>
+    <?!= include('js-suppliers-placeholder'); ?>
+    <?!= include('js-customers-placeholder'); ?>
+    <?!= include('js-warehouses-placeholder'); ?>
+    <?!= include('js-reports-placeholder'); ?>
+    <?!= include('js-currencies-placeholder'); ?>
+    <?!= include('js-settings-placeholder'); ?>
+
+</body>
+</html>
