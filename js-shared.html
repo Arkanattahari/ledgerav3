@@ -7,12 +7,6 @@
  * 1. FUNGSI UTILITAS GLOBAL (Toast & Loading)
  * ==========================================================================
  */
-
-/**
- * Menampilkan pesan notifikasi (toast) ke pengguna.
- * @param {string} message Pesan yang akan ditampilkan.
- * @param {string} type Tipe pesan: 'success', 'error', 'info'.
- */
 window.showToast = function(message, type = 'info', duration = 3500) {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -27,11 +21,6 @@ window.showToast = function(message, type = 'info', duration = 3500) {
     setTimeout(() => toast.remove(), duration);
 };
 
-/**
- * Menampilkan atau menyembunyikan overlay loading.
- * @param {boolean} show True untuk menampilkan, false untuk menyembunyikan.
- * @param {string} message Pesan yang ditampilkan saat loading.
- */
 window.showLoading = function(show, message = 'Memuat...') {
     let overlay = document.getElementById('loading-overlay');
     if (!overlay) {
@@ -52,28 +41,16 @@ window.showLoading = function(show, message = 'Memuat...') {
  * ==========================================================================
  */
 
-/**
- * Mengubah tampilan halaman, memperbarui judul, dan memuat data yang relevan.
- * Ini adalah satu-satunya fungsi yang mengontrol perpindahan halaman.
- * @param {string} pageId ID dari elemen <section> halaman (contoh: 'productsPage').
- * @param {string} title Judul utama yang akan ditampilkan di header.
- * @param {string} [secondaryTitle] Judul opsional untuk di dalam form (contoh: 'Edit Produk').
- */
 window.showPage = function(pageId, title, secondaryTitle = '') {
-    // Sembunyikan semua section halaman
     document.querySelectorAll('.page-section').forEach(section => {
         section.classList.remove('active');
     });
 
     const activePage = document.getElementById(pageId);
     if (activePage) {
-        // Tampilkan halaman yang diminta
         activePage.classList.add('active');
-
-        // Perbarui judul utama di header
         document.getElementById('pageTitle').textContent = title;
 
-        // Jika ada judul sekunder (untuk form), perbarui juga
         if (secondaryTitle) {
             const internalTitle = activePage.querySelector('h2');
             if (internalTitle) {
@@ -81,15 +58,12 @@ window.showPage = function(pageId, title, secondaryTitle = '') {
             }
         }
 
-        // Secara otomatis panggil fungsi load data yang sesuai
-        // contoh: 'productsPage' -> 'loadProducts'
-        const pageName = pageId.replace('Page', ''); // 'products' atau 'base-units'
-        const parts = pageName.split('-'); // ['base', 'units']
-        const capitalizedParts = parts.map(part => part.charAt(0).toUpperCase() + part.slice(1)); // ['Base', 'Units']
-        const pascalCaseName = capitalizedParts.join(''); // 'BaseUnits'
-        const loadFunctionName = 'load' + pascalCaseName; // 'loadBaseUnits'
+        const pageName = pageId.replace('Page', '');
+        const parts = pageName.split('-');
+        const capitalizedParts = parts.map(part => part.charAt(0).toUpperCase() + part.slice(1));
+        const pascalCaseName = capitalizedParts.join('');
+        const loadFunctionName = 'load' + pascalCaseName;
 
-        // Panggil fungsi jika ada
         if (typeof window[loadFunctionName] === 'function') {
             console.log(`INFO: Memanggil fungsi data: ${loadFunctionName}()`);
             window[loadFunctionName]();
@@ -97,11 +71,9 @@ window.showPage = function(pageId, title, secondaryTitle = '') {
 
     } else {
         console.error(`Error: Halaman dengan ID '${pageId}' tidak ditemukan. Kembali ke Dashboard.`);
-        // Fallback jika halaman tidak ada
         window.showPage('dashboardPage', 'Dashboard');
     }
 };
-
 
 /**
  * ==========================================================================
@@ -233,11 +205,10 @@ window.renderPagination = function(config) {
 
 /**
  * ==========================================================================
- * 5. INISIALISASI APLIKASI UTAMA (LOGIKA BARU YANG LEBIH SEDERHANA)
+ * 5. INISIALISASI APLIKASI UTAMA (LOGIKA NAVIGASI YANG BENAR)
  * ==========================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
-    // Array ini bertugas "mendaftarkan" semua fungsi inisialisasi dari setiap modul.
     const moduleInitializers = [
         'initializeProducts',
         'initializeCategories',
@@ -248,7 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'initializePurchases'
     ];
 
-    // Jalankan semua fungsi inisialisasi modul
     moduleInitializers.forEach(initFnName => {
         if (typeof window[initFnName] === 'function') {
             try {
@@ -259,31 +229,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Event listener untuk menu sidebar (sekarang lebih sederhana)
+    // Event listener untuk menu sidebar (sekarang lebih sederhana dan benar)
     const sidebarMenu = document.querySelector('.sidebar-menu');
     if (sidebarMenu) {
         sidebarMenu.addEventListener('click', function(event) {
             const link = event.target.closest('a[data-page]');
-            if (link) {
-                event.preventDefault();
+            if (!link) return;
+            
+            event.preventDefault();
 
-                // Dapatkan informasi dari elemen yang diklik
-                const pageId = link.dataset.page + 'Page';
-                const titleElement = link.closest('[data-main-title]');
-                const mainTitle = titleElement ? titleElement.dataset.mainTitle : 'Halaman';
+            // Dapatkan informasi dari elemen yang diklik
+            const pageId = link.dataset.page + 'Page';
+            const titleElement = link.closest('[data-main-title]');
+            const mainTitle = titleElement ? titleElement.dataset.mainTitle : 'Halaman';
 
-                // Panggil fungsi navigasi terpusat kita
-                window.showPage(pageId, mainTitle);
-                
-                // Update status 'active' pada link
-                document.querySelectorAll('.sidebar-menu a').forEach(l => l.classList.remove('active'));
-                link.classList.add('active');
+            // Panggil fungsi navigasi terpusat kita yang sudah benar
+            window.showPage(pageId, mainTitle);
+            
+            // Update status 'active' pada link
+            document.querySelectorAll('.sidebar-menu a').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
 
-                // Buka dropdown jika ada
-                let parentDetails = link.closest('details');
-                if (parentDetails) {
-                    parentDetails.open = true;
-                }
+            // Buka dropdown jika ada
+            let parentDetails = link.closest('details');
+            if (parentDetails) {
+                parentDetails.open = true;
             }
         });
     }
