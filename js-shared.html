@@ -1,0 +1,294 @@
+<script>
+// Modul untuk fungsionalitas UI bersama, navigasi, dan utilitas global (Versi Refactor v2 - Navigasi Terpusat)
+// Ini adalah "otak" dari frontend aplikasi.
+
+/**
+ * ==========================================================================
+ * 1. FUNGSI UTILITAS GLOBAL (Toast & Loading)
+ * ==========================================================================
+ */
+
+/**
+ * Menampilkan pesan notifikasi (toast) ke pengguna.
+ * @param {string} message Pesan yang akan ditampilkan.
+ * @param {string} type Tipe pesan: 'success', 'error', 'info'.
+ */
+window.showToast = function(message, type = 'info', duration = 3500) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), duration);
+};
+
+/**
+ * Menampilkan atau menyembunyikan overlay loading.
+ * @param {boolean} show True untuk menampilkan, false untuk menyembunyikan.
+ * @param {string} message Pesan yang ditampilkan saat loading.
+ */
+window.showLoading = function(show, message = 'Memuat...') {
+    let overlay = document.getElementById('loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'loading-overlay';
+        overlay.innerHTML = `<div class="spinner"></div><span id="loading-message"></span>`;
+        document.body.appendChild(overlay);
+    }
+    overlay.style.display = show ? 'flex' : 'none';
+    if(show) {
+        document.getElementById('loading-message').textContent = message;
+    }
+};
+
+/**
+ * ==========================================================================
+ * 2. FUNGSI NAVIGASI GLOBAL (VERSI BARU YANG TERPUSAT)
+ * ==========================================================================
+ */
+
+/**
+ * Mengubah tampilan halaman, memperbarui judul, dan memuat data yang relevan.
+ * Ini adalah satu-satunya fungsi yang mengontrol perpindahan halaman.
+ * @param {string} pageId ID dari elemen <section> halaman (contoh: 'productsPage').
+ * @param {string} title Judul utama yang akan ditampilkan di header.
+ * @param {string} [secondaryTitle] Judul opsional untuk di dalam form (contoh: 'Edit Produk').
+ */
+window.showPage = function(pageId, title, secondaryTitle = '') {
+    // Sembunyikan semua section halaman
+    document.querySelectorAll('.page-section').forEach(section => {
+        section.classList.remove('active');
+    });
+
+    const activePage = document.getElementById(pageId);
+    if (activePage) {
+        // Tampilkan halaman yang diminta
+        activePage.classList.add('active');
+
+        // Perbarui judul utama di header
+        document.getElementById('pageTitle').textContent = title;
+
+        // Jika ada judul sekunder (untuk form), perbarui juga
+        if (secondaryTitle) {
+            const internalTitle = activePage.querySelector('h2');
+            if (internalTitle) {
+                internalTitle.textContent = secondaryTitle;
+            }
+        }
+
+        // Secara otomatis panggil fungsi load data yang sesuai
+        // contoh: 'productsPage' -> 'loadProducts'
+        const pageName = pageId.replace('Page', ''); // 'products' atau 'base-units'
+        const parts = pageName.split('-'); // ['base', 'units']
+        const capitalizedParts = parts.map(part => part.charAt(0).toUpperCase() + part.slice(1)); // ['Base', 'Units']
+        const pascalCaseName = capitalizedParts.join(''); // 'BaseUnits'
+        const loadFunctionName = 'load' + pascalCaseName; // 'loadBaseUnits'
+
+        // Panggil fungsi jika ada
+        if (typeof window[loadFunctionName] === 'function') {
+            console.log(`INFO: Memanggil fungsi data: ${loadFunctionName}()`);
+            window[loadFunctionName]();
+        }
+
+    } else {
+        console.error(`Error: Halaman dengan ID '${pageId}' tidak ditemukan. Kembali ke Dashboard.`);
+        // Fallback jika halaman tidak ada
+        window.showPage('dashboardPage', 'Dashboard');
+    }
+};
+
+
+/**
+ * ==========================================================================
+ * 3. FUNGSI HELPER UI GENERIK (DRY) - TIDAK ADA PERUBAHAN
+ * ==========================================================================
+ */
+
+/**
+ * Helper generik untuk mengisi elemen <select> dengan data.
+ */
+window.populateDropdown_ = function(elementId, items, placeholder, selectedValue = null) {
+    const selectElement = document.getElementById(elementId);
+    if (!selectElement) return;
+    selectElement.innerHTML = '';
+    const placeholderOption = document.createElement('option');
+    placeholderOption.value = '';
+    placeholderOption.textContent = placeholder;
+    selectElement.appendChild(placeholderOption);
+    if (items && Array.isArray(items)) {
+        items.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            selectElement.appendChild(option);
+        });
+    }
+    if (selectedValue) {
+        selectElement.value = selectedValue;
+    }
+};
+
+/**
+ * Membuat HTML untuk tombol-tombol aksi standar di dalam tabel.
+ */
+window.createActionButtonsHTML = function(moduleName, options = {}) {
+    const config = { view: false, edit: true, archive: false, delete: true, ...options };
+    let html = '';
+
+    if (config.view) {
+        let viewClass = `view-${moduleName}-button`;
+        let viewIcon = 'fa-eye';
+        let viewTitle = 'Lihat Detail';
+        if (moduleName === 'warehouse') {
+            viewIcon = 'fa-boxes';
+            viewTitle = 'Lihat Produk di Gudang';
+        }
+        html += `<button class="${viewClass} btn icon-button" title="${viewTitle}"><i class="fas ${viewIcon}"></i></button>`;
+    }
+    if (config.edit) {
+        html += `<button class="edit-${moduleName}-button btn icon-button" title="Edit"><i class="fas fa-edit"></i></button>`;
+    }
+    if (config.archive) {
+        html += `<button class="archive-${moduleName}-button btn icon-button" title="Arsipkan"><i class="fas fa-archive"></i></button>`;
+    }
+    if (config.delete) {
+        html += `<button class="delete-${moduleName}-button btn icon-button" title="Hapus"><i class="fas fa-trash"></i></button>`;
+    }
+    return html;
+};
+
+/**
+ * Menangani proses hapus/arsip item secara generik.
+ */
+window.handleItemAction = function(config) {
+    const { itemId, itemName, action, serverFunctionName, loadDataFunction } = config;
+    if (confirm(`Apakah Anda yakin ingin ${action} "${itemName}"?`)) {
+        window.showLoading(true, `Sedang ${action}...`);
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    window.showToast(response.message, 'success');
+                    if (typeof loadDataFunction === 'function') {
+                        loadDataFunction();
+                    }
+                } else {
+                    window.showToast(response ? response.message : `Gagal ${action}.`, 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                // Menambahkan safety check
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal dari server.';
+                window.showToast(`Gagal ${action}: ${errorMessage}`, 'error');
+                console.error(`Kegagalan saat menjalankan handleItemAction untuk fungsi server '${serverFunctionName}':`, error);
+            })
+            [serverFunctionName](itemId);
+    }
+};
+
+/**
+ * ==========================================================================
+ * 4. FUNGSI PAGINASI GLOBAL - TIDAK ADA PERUBAHAN
+ * ==========================================================================
+ */
+window.renderPagination = function(config) {
+    const { containerSelector, totalRecords, currentPage, recordsPerPage, loadDataFn } = config;
+    const paginationContainer = document.querySelector(containerSelector);
+    if (!paginationContainer) return;
+    
+    paginationContainer.innerHTML = '';
+    if (totalRecords <= 0) return;
+    const totalPages = Math.ceil(totalRecords / recordsPerPage);
+
+    const pageInfo = document.createElement('span');
+    pageInfo.className = 'page-info';
+    pageInfo.textContent = `Halaman ${currentPage} dari ${totalPages} (Total ${totalRecords} data)`;
+    paginationContainer.appendChild(pageInfo);
+    if (totalPages > 1) {
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'pagination-buttons';
+        const prevButton = document.createElement('button');
+        prevButton.innerHTML = '<i class="fas fa-chevron-left"></i>';
+        prevButton.className = 'btn icon-button';
+        prevButton.disabled = currentPage === 1;
+        prevButton.addEventListener('click', () => loadDataFn(currentPage - 1));
+        buttonsDiv.appendChild(prevButton);
+
+        const nextButton = document.createElement('button');
+        nextButton.innerHTML = '<i class="fas fa-chevron-right"></i>';
+        nextButton.className = 'btn icon-button';
+        nextButton.disabled = currentPage === totalPages;
+        nextButton.addEventListener('click', () => loadDataFn(currentPage + 1));
+        buttonsDiv.appendChild(nextButton);
+        
+        paginationContainer.appendChild(buttonsDiv);
+    }
+};
+
+/**
+ * ==========================================================================
+ * 5. INISIALISASI APLIKASI UTAMA (LOGIKA BARU YANG LEBIH SEDERHANA)
+ * ==========================================================================
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    // Array ini bertugas "mendaftarkan" semua fungsi inisialisasi dari setiap modul.
+    const moduleInitializers = [
+        'initializeProducts',
+        'initializeCategories',
+        'initializeBaseUnits',
+        'initializeUnits',
+        'initializeSuppliers',
+        'initializeWarehouses',
+        'initializePurchases'
+    ];
+
+    // Jalankan semua fungsi inisialisasi modul
+    moduleInitializers.forEach(initFnName => {
+        if (typeof window[initFnName] === 'function') {
+            try {
+                window[initFnName]();
+            } catch (e) {
+                console.error(`Error saat menginisialisasi modul ${initFnName}:`, e);
+            }
+        }
+    });
+
+    // Event listener untuk menu sidebar (sekarang lebih sederhana)
+    const sidebarMenu = document.querySelector('.sidebar-menu');
+    if (sidebarMenu) {
+        sidebarMenu.addEventListener('click', function(event) {
+            const link = event.target.closest('a[data-page]');
+            if (link) {
+                event.preventDefault();
+
+                // Dapatkan informasi dari elemen yang diklik
+                const pageId = link.dataset.page + 'Page';
+                const titleElement = link.closest('[data-main-title]');
+                const mainTitle = titleElement ? titleElement.dataset.mainTitle : 'Halaman';
+
+                // Panggil fungsi navigasi terpusat kita
+                window.showPage(pageId, mainTitle);
+                
+                // Update status 'active' pada link
+                document.querySelectorAll('.sidebar-menu a').forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+
+                // Buka dropdown jika ada
+                let parentDetails = link.closest('details');
+                if (parentDetails) {
+                    parentDetails.open = true;
+                }
+            }
+        });
+    }
+
+    // Tampilkan halaman default saat aplikasi pertama kali dimuat
+    window.showPage('dashboardPage', 'Dashboard');
+});
+</script>
