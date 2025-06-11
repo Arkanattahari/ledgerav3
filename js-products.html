@@ -1,156 +1,80 @@
 <script>
-// Modul untuk fungsionalitas halaman Manajemen Produk
-
-// Fungsi untuk mengisi dropdown kategori produk (dipanggil dari initializeProducts dan js-categories)
-window.populateProductCategoryDropdown = function(selectedCategoryId = null) {
-    const selectElement = document.getElementById('productCategory');
-    if (!selectElement) {
-        console.warn("Dropdown Kategori Produk (productCategory) di form tidak ditemukan.");
-        return;
-    }
-    const currentVal = selectedCategoryId || selectElement.value;
-    selectElement.innerHTML = '<option value="">Memuat kategori...</option>'; 
-
-    google.script.run
-        .withSuccessHandler(categories => {
-            selectElement.innerHTML = '<option value="">Pilih Kategori</option>';
-            if (categories && categories.length > 0) {
-                categories.forEach(category => {
-                    if (category && category.categoryId && category.namaKategori) {
-                        const option = document.createElement('option');
-                        option.value = category.categoryId;
-                        option.textContent = category.namaKategori;
-                        selectElement.appendChild(option);
-                    }
-                });
-            }
-            if (currentVal) {
-                 const exists = Array.from(selectElement.options).some(opt => opt.value === currentVal);
-                 if (exists) selectElement.value = currentVal;
-            }
-        })
-        .withFailureHandler(error => {
-            console.error("Gagal memuat kategori untuk dropdown form produk:", error);
-            selectElement.innerHTML = '<option value="">Gagal memuat kategori</option>';
-        })
-        .getCategories();
-};
-
-// Fungsi untuk mengisi dropdown filter kategori produk (jika Anda memutuskan untuk menggunakannya kembali)
-// Untuk saat ini, kita fokus pada filter unit. Jika filter kategori produk di daftar tabel dibutuhkan,
-// fungsi ini bisa diaktifkan dan elemen select مربوطه di index.html juga.
-/*
-window.populateProductFilterCategoryDropdown = function() {
-    const selectElement = document.getElementById('filterCategoryProducts'); 
-    if (!selectElement) {
-        // console.warn("Dropdown Filter Kategori Produk (filterCategoryProducts) tidak ditemukan.");
-        return;
-    }
-    // ... (logika pengisian serupa dengan populateProductCategoryDropdown) ...
-};
-*/
+// Modul untuk fungsionalitas halaman Manajemen Produk (Versi Refactor)
 
 function initializeProducts() {
-    // Elemen Umum
+    // --- 1. DEKLARASI ELEMEN & VARIABEL ---
+    const mainContent = document.getElementById('mainContentArea');
     const productForm = document.getElementById('productForm');
     const productTableBody = document.querySelector('#productTable tbody');
+    const productSearchInput = document.getElementById('productSearchInput');
+
+    // Elemen Form
     const productIdInput = document.getElementById('productId');
-    const submitButton = document.getElementById('submitButton');
-    const resetButton = document.getElementById('resetButton');
-    
-    // Elemen di Halaman Daftar Produk (productsPage)
-    const addProductButton = document.getElementById('addProductButton');
-    const searchBar = document.getElementById('searchBar');
-    const filterUnitButton = document.getElementById('filterUnitButton');
-    const productsPageElement = document.getElementById('productsPage'); // Untuk paginasi
-
-    // Elemen di Halaman Form Produk (productFormPage)
-    const backToListButton = document.getElementById('backToListButton');
     const productFormTitleEl = document.getElementById('productFormTitle');
-
-    // Input field yang akan di-lock saat edit
-    const fieldsToLockInEdit = [
-        'productWarehouse', 'productSupplier', 'productStatus', 
-        'productCostPrice', 'productSellingPrice', 'productStockMinimum', 
-        'productSalesTax', 'productTaxType', 'productInitialStock' // productInitialStock akan jadi 'Stok Saat Ini'
-    ];
-    const productInitialStockLabel = document.querySelector('label[for="productInitialStock"]');
-
-
-    let productCache = {}; 
+    
+    // State Aplikasi
+    let productCache = {};
+    let allUnitsData = [];
     let currentPage = 1;
-    let recordsPerPage = 10; // Default, bisa diubah oleh pengguna nanti
-    let totalRecords = 0;
+    let recordsPerPage = 10;
+    
+    // --- 2. FUNGSI-FUNGSI LOKAL ---
 
-    // Panggil fungsi populate untuk dropdown kategori di form saat inisialisasi
-    if (typeof window.populateProductCategoryDropdown === 'function') {
-        window.populateProductCategoryDropdown(); 
-    }
-    /*
-    if (typeof window.populateProductFilterCategoryDropdown === 'function') {
-        window.populateProductFilterCategoryDropdown();
-    }
-    */
-
-    // Fungsi utama untuk memuat produk dengan paginasi
-    window.loadProducts = function(page = 1, limit = recordsPerPage) {
-        if (!productTableBody) {
-            console.error("loadProducts: productTableBody tidak ditemukan.");
-            return;
-        }
+    /**
+     * Memuat data produk dari server berdasarkan state saat ini.
+     */
+    window.loadProducts = function(page = 1) {
         currentPage = page;
-        recordsPerPage = limit;
-        const searchTerm = searchBar ? searchBar.value?.toLowerCase() || "" : "";
-        // const unitFilter = ""; // Tambahkan logika filter unit di sini nanti
-
+        if (!productTableBody) return;
+        
+        const searchTerm = productSearchInput ? productSearchInput.value.trim() : "";
         window.showLoading(true, 'Memuat produk...');
+
         google.script.run
             .withSuccessHandler(response => {
                 window.showLoading(false);
                 if (response && response.success) {
-                    productCache = {}; 
-                    if (response.data && Array.isArray(response.data)) {
-                        response.data.forEach(p => {
-                            if (p && p.productId !== undefined) { 
-                               productCache[p.productId] = p;
-                            }
-                        });
-                    }
-                    totalRecords = response.totalRecords || 0;
-                    renderProductTable(response.data || []);
-                    renderPaginationControls(totalRecords, currentPage, recordsPerPage);
+                    productCache = {};
+                    const products = response.data || [];
+                    products.forEach(p => {
+                        if (p && p.productId) productCache[p.productId] = p;
+                    });
+                    
+                    renderProductTable(products);
+                    
+                    window.renderPagination({
+                        containerSelector: '.pagination-controls-container',
+                        totalRecords: response.totalRecords,
+                        currentPage: currentPage,
+                        recordsPerPage: recordsPerPage,
+                        loadDataFn: window.loadProducts
+                    });
+
                 } else {
-                    console.warn("Data produk yang diterima tidak valid atau gagal:", response);
-                    window.showToast(response ? response.message : 'Gagal memuat data produk.', 'error');
-                    renderProductTable([]);
-                    renderPaginationControls(0, 1, recordsPerPage);
+                    window.showToast(response.message || 'Gagal memuat produk.', 'error');
                 }
             })
             .withFailureHandler(error => {
-                console.error("Gagal memuat produk:", error);
-                window.showToast('Gagal memuat produk: ' + (error.message || 'Error tidak diketahui'), 'error');
                 window.showLoading(false);
-                renderProductTable([]);
-                renderPaginationControls(0, 1, recordsPerPage);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error memuat produk: ' + errorMessage, 'error');
+                console.error('Gagal memuat produk:', error); // Ini membantu debugging
             })
-            .getProducts({ // Mengirim parameter untuk paginasi dan filter
-                page: currentPage, 
+            .getProducts({
+                page: currentPage,
                 limit: recordsPerPage,
                 searchTerm: searchTerm
-                // unitFilter: unitFilter // Kirim filter unit nanti
             });
     };
 
+    /**
+     * Merender data produk ke dalam tabel HTML.
+     */
     function renderProductTable(products) {
-        if (!productTableBody) {
-            console.error("renderProductTable: productTableBody tidak ditemukan!");
-            return;
-        }
-        productTableBody.innerHTML = ''; 
-        console.log("Data produk diterima di renderProductTable:", products); 
-
-        if (!products || products.length === 0) {
-            productTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Tidak ada produk yang tersedia.</td></tr>`;
+        if (!productTableBody) return;
+        productTableBody.innerHTML = '';
+        if (products.length === 0) {
+            productTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Tidak ada produk ditemukan.</td></tr>`;
             return;
         }
 
@@ -160,359 +84,214 @@ function initializeProducts() {
 
             row.insertCell(0).textContent = product.productName || 'N/A';
             row.insertCell(1).textContent = product.kodeProduk || 'N/A';
-            const hargaJual = parseFloat(product.hargaJual);
-            row.insertCell(2).textContent = !isNaN(hargaJual) ? `Rp ${hargaJual.toLocaleString('id-ID')}` : 'Rp 0';
-            row.insertCell(3).textContent = product.unitProduk || 'N/A';
-            const stok = parseInt(product.stok);
-            row.insertCell(4).textContent = !isNaN(stok) ? stok : 0;
-            let createdAtDisplay = 'N/A';
-            if (product.dibuatPada) {
-                try {
-                    createdAtDisplay = new Date(product.dibuatPada).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-                } catch(e) { console.warn("Gagal format tanggal 'dibuatPada':", product.dibuatPada, e); }
-            }
-            row.insertCell(5).textContent = createdAtDisplay;
-            const actionsCell = row.insertCell(7);
+            row.insertCell(2).textContent = `Rp ${Number(product.hargaJual || 0).toLocaleString('id-ID')}`;
+            row.insertCell(3).textContent = product.unitProdukName || 'N/A';
+            row.insertCell(4).textContent = product.stok || 0;
+            const dateCell = row.insertCell(5);
+            dateCell.textContent = product.dibuatPada ? new Date(product.dibuatPada).toLocaleDateString('id-ID') : 'N/A';
+            
+            const actionsCell = row.insertCell(6);
             actionsCell.classList.add('action-buttons');
-            actionsCell.innerHTML = `
-                <button class="view-button icon-button" title="Lihat Produk"><i class="fas fa-eye"></i></button>
-                <button class="edit-button icon-button" title="Edit Produk"><i class="fas fa-edit"></i></button>
-                <button class="delete-button icon-button" title="Hapus Produk"><i class="fas fa-trash"></i></button>
-            `;
+            actionsCell.style.textAlign = 'right';
+            actionsCell.innerHTML = createActionButtonsHTML('product', { edit: true, archive: true, delete: false });
         });
     }
 
-    function renderPaginationControls(total, page, limit) {
-        if (!productsPageElement) return;
-        let paginationContainer = productsPageElement.querySelector('.pagination-controls');
-        if (!paginationContainer) {
-            paginationContainer = document.createElement('div');
-            paginationContainer.className = 'pagination-controls';
-            // Sisipkan setelah tabel atau sebelum tabel, sesuai preferensi
-            productTableBody.parentNode.insertAdjacentElement('afterend', paginationContainer);
-        }
-
-        paginationContainer.innerHTML = ''; // Kosongkan kontrol lama
-        if (total === 0) return;
-
-        const totalPages = Math.ceil(total / limit);
-        if (totalPages <= 1) return; // Tidak perlu paginasi jika hanya 1 halaman
-
-        // Info Halaman
-        const pageInfo = document.createElement('span');
-        pageInfo.className = 'page-info';
-        pageInfo.textContent = `Halaman ${page} dari ${totalPages} (Total ${total} produk)`;
-        paginationContainer.appendChild(pageInfo);
-
-        // Kontainer Tombol Paginasi
-        const buttonsDiv = document.createElement('div');
-        buttonsDiv.className = 'pagination-buttons';
-
-        // Tombol Sebelumnya
-        if (page > 1) {
-            const prevButton = document.createElement('button');
-            prevButton.innerHTML = '<i class="fas fa-chevron-left"></i> Sebelumnya';
-            prevButton.className = 'button-secondary'; // Gunakan style tombol sekunder
-            prevButton.addEventListener('click', () => window.loadProducts(page - 1, limit));
-            buttonsDiv.appendChild(prevButton);
-        }
-
-        // Tombol Berikutnya
-        if (page < totalPages) {
-            const nextButton = document.createElement('button');
-            nextButton.innerHTML = 'Berikutnya <i class="fas fa-chevron-right"></i>';
-            nextButton.className = 'button-secondary';
-            nextButton.addEventListener('click', () => window.loadProducts(page + 1, limit));
-            buttonsDiv.appendChild(nextButton);
-        }
-        paginationContainer.appendChild(buttonsDiv);
-        
-        // Dropdown untuk memilih jumlah record per halaman (opsional)
-        const limitSelector = document.createElement('select');
-        limitSelector.className = 'pagination-limit-selector';
-        [10, 15, 25, 50].forEach(val => {
-            const option = document.createElement('option');
-            option.value = val;
-            option.textContent = `${val} per halaman`;
-            if (val === limit) option.selected = true;
-            limitSelector.appendChild(option);
-        });
-        limitSelector.addEventListener('change', (e) => {
-            window.loadProducts(1, parseInt(e.target.value)); // Kembali ke halaman 1 saat limit diubah
-        });
-        // Tambahkan ke paginationContainer atau buttonsDiv
-        const limitDiv = document.createElement('div');
-        limitDiv.className = 'pagination-limit';
-        limitDiv.appendChild(new Text('Tampilkan: '));
-        limitDiv.appendChild(limitSelector);
-        paginationContainer.appendChild(limitDiv);
-    }
-
-
-    function setFieldsReadonly(isReadonly) {
-        fieldsToLockInEdit.forEach(fieldId => {
-            const field = document.getElementById(fieldId);
-            if (field) {
-                field.readOnly = isReadonly;
-                field.disabled = isReadonly; // Untuk <select> agar benar-benar tidak bisa diubah
-                if (isReadonly) {
-                    field.classList.add('readonly-field');
-                } else {
-                    field.classList.remove('readonly-field');
-                }
-            }
-        });
-        // Khusus untuk field 'Tambahkan Kuantitas Stok' -> 'Stok Saat Ini'
-        if (productInitialStockLabel) {
-            productInitialStockLabel.textContent = isReadonly ? 'Stok Saat Ini (Tidak bisa diubah di sini):' : 'Tambahkan Kuantitas Stok * :';
-        }
-    }
-
+    /**
+     * Menampilkan dan mengisi form produk, baik untuk menambah baru atau mengedit.
+     */
     function showProductForm(product = null) {
-        if(productForm) productForm.reset(); 
-        if(productIdInput) productIdInput.value = ''; 
-
-        const categoryIdToSelect = product ? product.productCategoryId : null;
-        if (typeof window.populateProductCategoryDropdown === 'function') {
-            window.populateProductCategoryDropdown(categoryIdToSelect); 
-        } else { /* ... fallback ... */ }
-        // Panggil populate untuk dropdown unit juga di sini nanti
-
-        if (product) { // Mode Edit
-            if(productFormTitleEl) productFormTitleEl.textContent = 'Edit Produk';
-            if(productIdInput) productIdInput.value = product.productId || '';
-            setFieldsReadonly(true); // KUNCI field saat edit
-
-            if(document.getElementById('productName')) document.getElementById('productName').value = product.productName || '';
-            if(document.getElementById('productCode')) document.getElementById('productCode').value = product.kodeProduk || '';
-            if(document.getElementById('productUnitProduct')) document.getElementById('productUnitProduct').value = product.unitProduk || '';
-            if(document.getElementById('productSalesUnit')) document.getElementById('productSalesUnit').value = product.unitPenjualan || '';
-            if(document.getElementById('productPurchaseUnit')) document.getElementById('productPurchaseUnit').value = product.unitPembelian || '';
-            if(document.getElementById('productPurchaseQuantityLimit')) document.getElementById('productPurchaseQuantityLimit').value = product.batasKuantitasPembelian !== null && product.batasKuantitasPembelian !== undefined ? product.batasKuantitasPembelian : '';
-            if(document.getElementById('productNotes')) document.getElementById('productNotes').value = product.catatan || '';
-            
-            // Field yang di-lock (nilainya tetap diisi untuk dilihat)
-            if(document.getElementById('productWarehouse')) document.getElementById('productWarehouse').value = product.gudang || '';
-            if(document.getElementById('productSupplier')) document.getElementById('productSupplier').value = product.pemasok || '';
-            if(document.getElementById('productStatus')) document.getElementById('productStatus').value = product.statusProduk || 'Diterima';
-            if(document.getElementById('productCostPrice')) document.getElementById('productCostPrice').value = product.hargaPokok !== null && product.hargaPokok !== undefined ? product.hargaPokok : '';
-            if(document.getElementById('productSellingPrice')) document.getElementById('productSellingPrice').value = product.hargaJual !== null && product.hargaJual !== undefined ? product.hargaJual : '';
-            if(document.getElementById('productStockMinimum')) document.getElementById('productStockMinimum').value = product.stokMinimum !== null && product.stokMinimum !== undefined ? product.stokMinimum : '';
-            if(document.getElementById('productSalesTax')) document.getElementById('productSalesTax').value = product.pajakPenjualan !== null && product.pajakPenjualan !== undefined ? product.pajakPenjualan : '';
-            if(document.getElementById('productTaxType')) document.getElementById('productTaxType').value = product.tipePajak || 'Eksklusif';
-            if(document.getElementById('productInitialStock')) document.getElementById('productInitialStock').value = product.stok !== null && product.stok !== undefined ? product.stok : ''; 
-            // Tipe Produk sudah kita sepakati dihapus
-            
-            if(submitButton) submitButton.innerHTML = '<i class="fas fa-save"></i> Perbarui Produk';
-        } else { // Mode Tambah Baru
-            if(productFormTitleEl) productFormTitleEl.textContent = 'Tambah Produk Baru';
-            setFieldsReadonly(false); // BUKA kunci field saat tambah baru
-            if(document.getElementById('productInitialStock')) document.getElementById('productInitialStock').value = '';
-            if(submitButton) submitButton.innerHTML = '<i class="fas fa-plus"></i> Tambah Produk';
-        }
-        window.showPage('productFormPage', product ? 'Edit Produk' : 'Tambah Produk Baru');
-    }
-
-    function getFormData() {
-        const currentProductId = document.getElementById('productId')?.value || null;
-        const isEditMode = !!currentProductId; // Cek apakah mode edit
-
-        const productData = {
-            productId: currentProductId,
-            productName: document.getElementById('productName')?.value.trim(),
-            kodeProduk: document.getElementById('productCode')?.value.trim(),
-            productCategory: document.getElementById('productCategory')?.value,
-            unitProduk: document.getElementById('productUnitProduct')?.value,
-            unitPenjualan: document.getElementById('productSalesUnit')?.value,
-            unitPembelian: document.getElementById('productPurchaseUnit')?.value,
-            batasKuantitasPembelian: document.getElementById('productPurchaseQuantityLimit')?.value ? parseFloat(document.getElementById('productPurchaseQuantityLimit')?.value) : null,
-            catatan: document.getElementById('productNotes')?.value.trim() || '',
-            // Untuk field yang di-lock saat edit, kita tetap ambil nilainya jika mode tambah
-            // atau ambil dari data yang sudah ada jika tidak ingin mengirim field yg di-lock saat update.
-            // Namun, lebih aman mengirim semua field, server yang memutuskan apa yang diupdate.
-            gudang: document.getElementById('productWarehouse')?.value,
-            pemasok: document.getElementById('productSupplier')?.value,
-            statusProduk: document.getElementById('productStatus')?.value,
-            hargaPokok: parseFloat(document.getElementById('productCostPrice')?.value),
-            hargaJual: parseFloat(document.getElementById('productSellingPrice')?.value),
-            stokMinimum: document.getElementById('productStockMinimum')?.value ? parseInt(document.getElementById('productStockMinimum')?.value) : null,
-            pajakPenjualan: document.getElementById('productSalesTax')?.value ? parseFloat(document.getElementById('productSalesTax')?.value) : null,
-            tipePajak: document.getElementById('productTaxType')?.value,
-            stok: parseInt(document.getElementById('productInitialStock')?.value), // Untuk add, ini stok awal. Untuk edit, ini stok saat ini
-        };
-
-        // --- Validasi Client-Side ---
-        if (!productData.productName) { window.showToast('Nama Produk wajib diisi.', 'error'); return null; }
-        if (!productData.kodeProduk) { window.showToast('Kode Produk wajib diisi.', 'error'); return null; }
-        if (!productData.productCategory) { window.showToast('Kategori Produk wajib dipilih.', 'error'); return null; }
-        if (!productData.unitProduk) { window.showToast('Unit Produk (Dasar) wajib dipilih.', 'error'); return null; }
-        if (!productData.unitPenjualan) { window.showToast('Unit Penjualan wajib dipilih.', 'error'); return null; }
-        if (!productData.unitPembelian) { window.showToast('Unit Pembelian wajib dipilih.', 'error'); return null; }
+        resetProductForm();
+        const isEdit = !!(product && product.productId);
         
-        // Validasi hanya jika tidak mode edit ATAU jika field tersebut tidak di-lock
-        if (!isEditMode || !fieldsToLockInEdit.includes('productWarehouse')) {
-            if (!productData.gudang) { window.showToast('Gudang wajib dipilih.', 'error'); return null; }
-        }
-        if (!isEditMode || !fieldsToLockInEdit.includes('productSupplier')) {
-            if (!productData.pemasok) { window.showToast('Pemasok wajib dipilih.', 'error'); return null; }
-        }
-        if (!isEditMode || !fieldsToLockInEdit.includes('productStatus')) {
-            if (!productData.statusProduk) { window.showToast('Status Produk wajib dipilih.', 'error'); return null; }
-        }
-        if (!isEditMode || !fieldsToLockInEdit.includes('productCostPrice')) {
-            if (document.getElementById('productCostPrice')?.value.trim() === '' || isNaN(productData.hargaPokok) || productData.hargaPokok < 0) {
-                window.showToast(document.getElementById('productCostPrice')?.value.trim() === '' ? 'Harga Pokok wajib diisi.' : 'Harga Pokok harus berupa angka positif.', 'error'); return null;
-            }
-        }
-        if (!isEditMode || !fieldsToLockInEdit.includes('productSellingPrice')) {
-            if (document.getElementById('productSellingPrice')?.value.trim() === '' || isNaN(productData.hargaJual) || productData.hargaJual < 0) {
-                window.showToast(document.getElementById('productSellingPrice')?.value.trim() === '' ? 'Harga Jual wajib diisi.' : 'Harga Jual harus berupa angka positif.', 'error'); return null;
-            }
-        }
-        if (!isEditMode || !fieldsToLockInEdit.includes('productTaxType')) {
-            if (!productData.tipePajak) { window.showToast('Tipe Pajak wajib dipilih.', 'error'); return null; }
-        }
+        window.showLoading(true, 'Mempersiapkan form...');
         
-        // Validasi 'Tambahkan Kuantitas Stok' hanya saat mode TAMBAH atau jika fieldnya TIDAK di-lock (sekarang di-lock saat edit)
-        if (!isEditMode) { 
-            if (document.getElementById('productInitialStock')?.value.trim() === '' || isNaN(productData.stok) || productData.stok < 0) {
-                window.showToast(document.getElementById('productInitialStock')?.value.trim() === '' ? 'Tambahkan Kuantitas Stok wajib diisi.' : 'Kuantitas Stok harus berupa angka non-negatif.', 'error'); return null;
-            }
-        } else { // Saat mode edit, 'stok' diambil dari product.stok (readonly), jadi tidak perlu divalidasi sebagai input baru.
-            // Namun, productData.stok akan tetap berisi nilai dari field 'productInitialStock' yang readonly.
-        }
-
-        // Validasi field opsional jika diisi
-        if (productData.batasKuantitasPembelian !== null && (isNaN(productData.batasKuantitasPembelian) || productData.batasKuantitasPembelian < 0)) {
-            window.showToast('Batas Kuantitas Pembelian harus berupa angka positif jika diisi.', 'error'); return null;
-        }
-        if (productData.stokMinimum !== null && (isNaN(productData.stokMinimum) || productData.stokMinimum < 0)) {
-            window.showToast('Stok Minimum harus berupa angka positif jika diisi.', 'error'); return null;
-        }
-        if (productData.pajakPenjualan !== null && (isNaN(productData.pajakPenjualan) || productData.pajakPenjualan < 0 || productData.pajakPenjualan > 100)) {
-            window.showToast('Pajak Penjualan harus antara 0-100 jika diisi.', 'error'); return null;
-        }
-        return productData;
-    }
-    
-    // Event Listener Submit Form (sudah termasuk penanganan file dari Turn 46)
-    if(productForm) {
-        productForm.addEventListener('submit', function(event) {
-            event.preventDefault();
-            let productDataFromForm = getFormData(); 
-            if (!productDataFromForm) return;
-
-            const action = productDataFromForm.productId ? 'updateProduct' : 'addProduct';
-            const loadingMessage = productDataFromForm.productId ? 'Memperbarui produk...' : 'Menambahkan produk...';
-            window.showLoading(true, loadingMessage);
-
-            if (fileInput && fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                const reader = new FileReader();
-
-                    callServerSideAction(action, productDataFromForm);
-                };
-        });
-    } else { /* console.error ... */ }
-    
-    function callServerSideAction(action, dataToSend) { // Ubah nama parameter agar lebih generik
         google.script.run
             .withSuccessHandler(response => {
                 window.showLoading(false);
-                if (response && response.success) {
-                    window.showToast(response.message, 'success');
-                    window.showPage('productsPage', 'Daftar Produk'); 
-                    window.loadProducts(currentPage, recordsPerPage);
-                    
-                    if (action === 'addProduct' && productForm) {
-                        if(productFormTitleEl) productFormTitleEl.textContent = 'Tambah Produk Baru';
-                        if(submitButton) submitButton.innerHTML = '<i class="fas fa-plus"></i> Tambah Produk';
-                    }
-                } else {
-                     window.showToast(response ? response.message : 'Operasi gagal atau respon tidak valid.', 'error');
+                if (!response.success) {
+                    window.showToast(response.message || 'Gagal memuat data form.', 'error');
+                    return;
                 }
+
+                const deps = response.data;
+                allUnitsData = deps.units || [];
+
+                populateDropdown_('productCategory', deps.categories, 'Pilih Kategori', product?.productCategoryId);
+                populateDropdown_('productUnitProduct', deps.baseUnits, 'Pilih Unit Dasar', product?.unitProdukId);
+                populateDropdown_('productWarehouse', deps.warehouses, 'Pilih Gudang', product?.warehouseId);
+                populateDropdown_('productSupplier', deps.suppliers, 'Pilih Pemasok', product?.pemasokId);
+
+                const initialBaseUnitId = product?.unitProdukId;
+                const initialFilteredUnits = initialBaseUnitId ? allUnitsData.filter(unit => unit.ref === initialBaseUnitId) : [];
+                
+                populateDropdown_('productSalesUnit', initialFilteredUnits, 'Pilih Unit Penjualan', product?.unitPenjualanId);
+                populateDropdown_('productPurchaseUnit', initialFilteredUnits, 'Pilih Unit Pembelian', product?.unitPembelianId);
+
+                if (isEdit) {
+                    productFormTitleEl.textContent = 'Edit Produk';
+                    productIdInput.value = product.productId;
+                    document.getElementById('productName').value = product.productName || '';
+                    document.getElementById('productCode').value = product.kodeProduk || '';
+                    document.getElementById('productNotes').value = product.catatan || '';
+                }
+                
+                setFormMode(isEdit);
+                window.showPage('productFormPage', isEdit ? 'Edit Produk' : 'Tambah Produk Baru');
             })
             .withFailureHandler(error => {
-            window.showLoading(false);
-            console.error(`Gagal ${action}:`, error);
-            window.showToast(`Gagal ${action}: ` + (error.message || 'Error tidak diketahui'), 'error');
+                window.showLoading(false);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error memuat data form: ' + errorMessage, 'error');
+                console.error('Gagal memuat data form:', error); // Ini membantu debugging
             })
-            [action](dataToSend);
+            .getProductFormDependencies();
     }
-    
-    // Event Listener untuk tombol lainnya (reset, add, back, delete, filter, search)
-    // ... (SEPERTI KODE ANDA SEBELUMNYA, SUDAH BAIK) ...
-    // Pastikan resetProductForm memanggil showProductForm() jika dikonsolidasi
-    if(resetButton) resetButton.addEventListener('click', () => showProductForm()); // Konsolidasi reset
-    
-    if(addProductButton) { addProductButton.addEventListener('click', () => showProductForm()); } 
-    else { console.error("Tombol 'Tambah Produk Baru' (addProductButton) tidak ditemukan!"); }
 
-    if(backToListButton) { backToListButton.addEventListener('click', () => { window.showPage('productsPage', 'Daftar Produk'); }); } 
-    else { console.error("Tombol 'Kembali ke Daftar Produk' (backToListButton) tidak ditemukan!"); }
+    /**
+     * Mengambil dan memvalidasi data dari form produk.
+     */
+    function getProductFormData() {
+        const isEditMode = !!(productIdInput.value);
+        const formData = {
+            productId: productIdInput.value || null,
+            productName: document.getElementById('productName').value.trim(),
+            kodeProduk: document.getElementById('productCode').value.trim(),
+            productCategory: document.getElementById('productCategory').value,
+            unitProdukId: document.getElementById('productUnitProduct').value,
+            unitPenjualanId: document.getElementById('productSalesUnit').value,
+            unitPembelianId: document.getElementById('productPurchaseUnit').value,
+            catatan: document.getElementById('productNotes').value.trim()
+        };
 
-    if(productTableBody) {
-        productTableBody.addEventListener('click', function(event) {
-            const button = event.target.closest('button.icon-button');
-            if (!button) return;
+        if (!formData.productName || !formData.kodeProduk || !formData.productCategory || !formData.unitProdukId || !formData.unitPenjualanId || !formData.unitPembelianId) {
+            window.showToast('Semua field dengan tanda * wajib diisi.', 'error'); return null;
+        }
 
-            const row = button.closest('tr');
-            if (!row || !row.dataset.productId) return;
-            
-            const productId = row.dataset.productId;
+        if (!isEditMode) {
+            formData.warehouseId = document.getElementById('productWarehouse').value;
+            formData.pemasokId = document.getElementById('productSupplier').value;
+            formData.statusProduk = document.getElementById('productStatus').value;
+            formData.hargaPokok = document.getElementById('productCostPrice').value;
+            formData.hargaJual = document.getElementById('productSellingPrice').value;
+            formData.pajakPenjualan = document.getElementById('productSalesTax').value;
+            formData.tipePajak = document.getElementById('productTaxType').value;
+            formData.stok = document.getElementById('productInitialStock').value;
+            formData.stokMinimum = document.getElementById('productStockMinimum').value;
 
-            if (button.classList.contains('view-button')) {
-                console.log('Lihat produk ID:', productId);
-                window.showToast('Fitur Lihat Detail belum diimplementasikan.', 'info');
-            } else if (button.classList.contains('edit-button')) {
-                const productToEdit = productCache[productId];
-                if (productToEdit) {
-                    showProductForm(productToEdit);
+            if (!formData.warehouseId || !formData.pemasokId || !formData.hargaPokok || !formData.hargaJual || !formData.stok) {
+                 window.showToast('Semua field dengan tanda * wajib diisi.', 'error'); return null;
+            }
+        }
+        return formData;
+    }
+
+    /**
+     * Mengatur field mana yang harus ditampilkan/disembunyikan untuk mode edit/tambah.
+     */
+    function setFormMode(isEdit) {
+        const addOnlyElements = productForm.querySelectorAll('.add-only');
+        addOnlyElements.forEach(el => {
+            el.style.display = isEdit ? 'none' : 'block';
+            el.querySelectorAll('input[required], select[required]').forEach(input => {
+                if (isEdit) {
+                    input.removeAttribute('required');
                 } else {
-                    window.showToast('Data produk tidak ditemukan di cache untuk diedit.', 'error');
+                    input.setAttribute('required', 'required');
                 }
-            } else if (button.classList.contains('delete-button')) {
-                const productNameForConfirm = productCache[productId] ? productCache[productId].productName : row.cells[1]?.textContent || 'Produk Ini';
-                if (confirm(`Apakah Anda yakin ingin menghapus produk "${productNameForConfirm}" (ID: ${productId})?`)) {
-                    window.showLoading(true, 'Menghapus produk...');
-                    google.script.run
-                        .withSuccessHandler(response => {
-                            window.showLoading(false);
-                            if (response && response.success) {
-                                window.showToast(response.message, 'success');
-                                window.loadProducts(); 
-                            } else {
-                                window.showToast(response ? response.message : 'Gagal menghapus atau respon tidak valid.', 'error');
-                            }
-                        })
-                        .withFailureHandler(error => {
-                            window.showLoading(false);
-                            console.error("Gagal menghapus produk:", error);
-                            window.showToast('Gagal menghapus produk: ' + (error.message || 'Error tidak diketahui'), 'error');
-                        })
-                        .deleteProduct(Number(productId));
+            });
+        });
+    }
+
+    /**
+     * Mereset form produk ke keadaan awal.
+     */
+    function resetProductForm() {
+        if(productForm) productForm.reset();
+        if(productIdInput) productIdInput.value = '';
+        if(productFormTitleEl) productFormTitleEl.textContent = 'Tambah Produk Baru';
+        document.getElementById('submitProductButton').innerHTML = '<i class="fas fa-plus"></i> Tambah Produk';
+    }
+
+    // --- 3. EVENT LISTENERS ---
+
+    if (productForm) {
+        productForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = getProductFormData();
+            if (!formData) return;
+
+            const action = formData.productId ? 'updateProduct' : 'addProduct';
+            window.showLoading(true, 'Menyimpan data produk...');
+            
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response.success) {
+                        window.showToast(response.message, 'success');
+                        window.loadProducts(currentPage);
+                        window.showPage('productsPage', 'Daftar Produk');
+                    } else {
+                        window.showToast(response.message, 'error');
+                    }
+                })
+                .withFailureHandler(error => {
+                    window.showLoading(false);
+                    const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error saat menyimpan: ' + errorMessage, 'error');
+                    console.error('Gagal menyimpan:', error); // Ini membantu debugging
+                })
+                [action](formData);
+        });
+    }
+
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target.closest('#addProductButton')) { showProductForm(); } 
+            else if (target.closest('#backToListButton')) { window.showPage('productsPage', 'Daftar Produk'); }
+            else if (target.closest('#resetProductFormButton')) { resetProductForm(); }
+            else if (target.closest('.edit-product-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.productId) {
+                    const productToEdit = productCache[row.dataset.productId];
+                    if (productToEdit) showProductForm(productToEdit);
+                }
+            }
+            else if (target.closest('.archive-product-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.productId) {
+                    const productToArchive = productCache[row.dataset.productId];
+                    if (productToArchive) {
+                        handleItemAction({
+                            itemId: productToArchive.productId,
+                            itemName: productToArchive.productName,
+                            action: 'mengarsipkan',
+                            serverFunctionName: 'archiveProduct',
+                            loadDataFunction: window.loadProducts
+                        });
+                    }
                 }
             }
         });
-    } else { console.error("Elemen productTableBody tidak ditemukan!");
     }
 
-    if(filterUnitButton) {
-        filterUnitButton.addEventListener('click', () => {
-            console.log('Tombol Filter Unit diklik');
-            window.showToast('Fitur Filter Unit belum diimplementasikan.', 'info');
+    const productUnitProductSelect = document.getElementById('productUnitProduct');
+    if (productUnitProductSelect) {
+        productUnitProductSelect.addEventListener('change', function() {
+            const selectedBaseUnitId = this.value;
+            const filteredUnits = selectedBaseUnitId ? allUnitsData.filter(unit => unit.ref === selectedBaseUnitId) : [];
+            populateDropdown_('productSalesUnit', filteredUnits, 'Pilih Unit Penjualan');
+            populateDropdown_('productPurchaseUnit', filteredUnits, 'Pilih Unit Pembelian');
         });
     }
-    
-    if(searchBar) {
-        let filterTimeout;
-        searchBar.addEventListener('input', () => {
-            clearTimeout(filterTimeout);
-            filterTimeout = setTimeout(() => window.loadProducts(), 300);
+
+    if (productSearchInput) {
+        let searchTimeout;
+        productSearchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => { window.loadProducts(1); }, 300);
         });
-    } else {
-        // console.error("Elemen searchBar tidak ditemukan!"); // Bisa jadi opsional, tidak perlu error
     }
 }
-// Akhir dari initializeProducts()
 </script>
