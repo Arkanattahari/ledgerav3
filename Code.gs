@@ -11,122 +11,61 @@ const PURCHASES_SHEET_NAME = 'Purchases';
 const PURCHASE_ITEMS_SHEET_NAME = 'PurchaseItems';
 
 // ==========================================================================
-// FUNGSI UTAMA WEB APP (doGet, include & getProductFormDependencies)
+// FUNGSI UTAMA WEB APP (doGet & include)
 // ==========================================================================
-
 function doGet(e) {
   try {
-    Logger.log("LOG_INFO: doGet execution started.");
     const template = HtmlService.createTemplateFromFile('index');
     const htmlOutput = template.evaluate();
-    
-    htmlOutput.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-        .setTitle('Ledgera App')
-
-    Logger.log("LOG_INFO: doGet evaluation complete, returning HtmlOutput.");
+    htmlOutput.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL).setTitle('Ledgera App');
     return htmlOutput;
-
   } catch (error) {
-    Logger.log("LOG_ERROR: Critical error in doGet: " + error.toString() + " Stack: " + error.stack);
-    return HtmlService.createHtmlOutput(
-      "<h3>Terjadi kesalahan kritis saat memuat aplikasi.</h3><p>Detail: " + 
-      error.toString() + 
-      "</p><p>Silakan coba lagi nanti atau hubungi administrator. Periksa log server untuk detail teknis.</p>"
-    );
+    Logger.log("LOG_ERROR: Critical error in doGet: " + error.toString());
+    return HtmlService.createHtmlOutput("<h3>Terjadi kesalahan kritis saat memuat aplikasi.</h3>");
   }
 }
 
 function include(filename) {
-  try {
-    if (!filename || typeof filename !== 'string' || filename.trim() === '') {
-      Logger.log(`LOG_ERROR: Invalid or empty filename provided to include function: '${filename}'`);
-      // Melemparkan error akan lebih baik ditangkap oleh doGet jika ini terjadi saat evaluasi template
-      throw new Error(`Nama file tidak valid atau kosong untuk include: '${filename}'`);
-    }
-    Logger.log(`LOG_INFO: Including file: ${filename}`);
-    return HtmlService.createHtmlOutputFromFile(filename).getContent();
-  } catch (e) {
-    Logger.log(`LOG_ERROR: Failed to include file: '${filename}'. Error: ${e.toString()}`);
-    // Melemparkan error ini agar jika terjadi saat evaluasi template, bisa ditangkap oleh try-catch di doGet
-    throw new Error(`Gagal menyertakan file: '${filename}'. Detail: ${e.toString()}`);
-  }
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+// ==========================================================================
+// FUNGSI HELPER UTAMA
+// ==========================================================================
 /**
- * Mengambil semua data yang diperlukan untuk mengisi dropdown di form produk
- * dalam satu kali panggilan server.
- * @returns {Object} Objek yang berisi semua data dependensi.
+ * Helper generik baru yang terbukti bekerja.
+ * @param {Array<Array<any>>} data - Data mentah dari sheet (termasuk header).
+ * @param {Object} fieldMap - Peta untuk mengubah nama header ke properti JS.
+ * @returns {Array<Object>} Array objek yang sudah diproses.
  */
-function getProductFormDependencies() {
-  try {
-    const sheetNames = [
-      PRODUCT_SHEET_NAME,
-      CATEGORY_SHEET_NAME,
-      BASE_UNIT_SHEET_NAME,
-      UNIT_SHEET_NAME,
-      WAREHOUSE_SHEET_NAME,
-      SUPPLIER_SHEET_NAME
-    ];
-    
-    // Gunakan helper efisien yang sudah kita buat
-    const allData = getDataFromSheets_(sheetNames);
-
-    // FUNGSI processData KITA BUAT LEBIH FLEKSIBEL
-    const processData = (data, fieldMap) => {
-      if (!data || data.length < 2) return [];
-      const headers = data[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
-      
-      const colIndexes = {};
-      for (const key in fieldMap) {
-        const colIndex = headers.indexOf(fieldMap[key].toLowerCase());
-        if (colIndex === -1) {
-          Logger.log(`WARNING: processData - Kolom '${fieldMap[key]}' tidak ditemukan.`);
-          return []; // Kembalikan array kosong jika kolom penting tidak ada
-        }
-        colIndexes[key] = colIndex;
+function _processSheetData_(data, fieldMap) {
+  if (!data || data.length < 2) return [];
+  const headers = data[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
+  const colIndexes = {};
+  for (const key in fieldMap) {
+    const colName = fieldMap[key];
+    const colIndex = headers.indexOf(colName.toLowerCase().replace(/ /g, ''));
+    if (colIndex === -1) {
+      Logger.log(`WARNING: _processSheetData_ - Kolom '${colName}' tidak ditemukan.`);
+    }
+    colIndexes[key] = colIndex;
+  }
+  return data.slice(1).map(row => {
+    const item = {};
+    for (const key in colIndexes) {
+      const index = colIndexes[key];
+      let value = (index !== -1 && row[index] !== undefined) ? row[index] : null;
+      if (typeof value === 'string') {
+        value = manualEscapeHtml(value);
       }
-
-      return data.slice(1).map(row => {
-        const item = {};
-        for (const key in colIndexes) {
-          item[key] = row[colIndexes[key]];
-        }
-        return item;
-      }).filter(item => item.id); // Hanya kembalikan yang punya ID
-    };
-
-    const dependencies = {
-      products: processData(allData[PRODUCT_SHEET_NAME], { id: 'ProductID', name: 'NamaProduk', code: 'KodeProduk', cost: 'HargaPokok', stock: 'Stok' }),
-      categories: processData(allData[CATEGORY_SHEET_NAME], { id: 'CategoryID', name: 'NamaKategori' }),
-      baseUnits: processData(allData[BASE_UNIT_SHEET_NAME], { id: 'BaseUnitID', name: 'NamaUnitDasar' }),
-      // Minta 'ref' (kunci penghubung) untuk units
-      units: processData(allData[UNIT_SHEET_NAME], { id: 'UnitID', name: 'NamaUnit', ref: 'BaseUnitID_Ref' }),
-      warehouses: processData(allData[WAREHOUSE_SHEET_NAME], { id: 'WarehouseID', name: 'NamaGudang' }),
-      suppliers: processData(allData[SUPPLIER_SHEET_NAME], { id: 'SupplierID', name: 'NamaPemasok' })
-    };
-    Logger.log(JSON.stringify(dependencies));
-    return { success: true, data: dependencies };
-
-  } catch (e) {
-    Logger.log("LOG_ERROR: Error in getProductFormDependencies: " + e.toString());
-    return { success: false, message: 'Gagal memuat data pendukung form: ' + e.message, data: {} };
-  }
-}
-
-// ==========================================================================
-// FUNGSI UTILITAS
-// ==========================================================================
-
-function manualEscapeHtml(text) {
-  if (typeof text !== 'string') {
-    return text; // Kembalikan apa adanya jika bukan string
-  }
-  return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;"); // atau &apos;
+      // Khusus untuk kolom tanggal, konversi ke ISO string agar tidak error
+      if (value instanceof Date) {
+        value = value.toISOString();
+      }
+      item[key] = value;
+    }
+    return item;
+  }).filter(item => item.id && String(item.id).trim() !== '');
 }
 
 /**
@@ -138,21 +77,28 @@ function getDataFromSheets_(sheetNames) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const allSheets = ss.getSheets();
   const sheetData = {};
-
   const requestedSheets = allSheets.filter(sheet => sheetNames.includes(sheet.getName()));
-
   requestedSheets.forEach(sheet => {
     const sheetName = sheet.getName();
     const range = sheet.getDataRange();
-    if (range.getNumRows() > 0) {
-      sheetData[sheetName] = range.getValues();
-    } else {
-      sheetData[sheetName] = []; // Kembalikan array kosong jika sheet tidak punya data
-    }
-    Logger.log(`LOG_INFO: getDataFromSheets_ - Read ${sheetData[sheetName].length} rows from "${sheetName}".`);
+    sheetData[sheetName] = (range.getNumRows() > 0) ? range.getValues() : [];
   });
-
   return sheetData;
+}
+
+// ==========================================================================
+// FUNGSI UTILITAS
+// ==========================================================================
+function manualEscapeHtml(text) {
+  if (typeof text !== 'string') {
+    return text; // Kembalikan apa adanya jika bukan string
+  }
+  return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;"); // atau &apos;
 }
 
 /**
@@ -333,156 +279,157 @@ function checkForDuplicate_(sheet, valueToCheck, columnName, excludeRowIndex = -
   return false; // Tidak ada duplikat
 }
 
-/**
- * Fungsi utilitas generik untuk mengambil dan memproses data dari sheet manapun.
- * Menggantikan logika yang berulang di banyak fungsi get...
- * @param {string} sheetName Nama sheet yang akan diproses.
- * @param {Object} headerMap Objek untuk memetakan nama header di sheet ke nama properti di objek JavaScript.
- * @param {Object} [options={}] Opsi tambahan seperti filter pencarian.
- * @param {string} [options.searchTerm] Kata kunci untuk pencarian.
- * @param {Array<string>} [options.searchColumns] Array nama header (setelah normalisasi) untuk dicari.
- * @returns {Object} Objek hasil standar { success, message, data, totalRecords }.
- */
-function _fetchAndProcessData_(sheetName, headerMap, options = {}) {
+// ==========================================================================
+// FUNGSI-FUNGSI GETTER
+// ==========================================================================
+function getProductFormDependencies() {
   try {
-    const sheet = getSheet_(sheetName);
-    if (!sheet) {
-      throw new Error(`Sheet "${sheetName}" tidak ditemukan.`);
-    }
+    const sheetNames = [
+      PRODUCT_SHEET_NAME, CATEGORY_SHEET_NAME, BASE_UNIT_SHEET_NAME,
+      UNIT_SHEET_NAME, WAREHOUSE_SHEET_NAME, SUPPLIER_SHEET_NAME
+    ];
+    const allData = getDataFromSheets_(sheetNames);
 
-    const values = sheet.getDataRange().getValues();
-    if (values.length <= 1) {
-      return { success: true, data: [], totalRecords: 0 };
-    }
-
-    const headers = values[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
-    const results = [];
-
-    // Buat pemetaan dari nama properti JS ke indeks kolom untuk efisiensi
-    const propToIndexMap = {};
-    for (const propName in headerMap) {
-      const headerName = headerMap[propName];
-      const index = headers.indexOf(headerName.toLowerCase().replace(/ /g, ''));
-      if (index === -1) {
-        Logger.log(`LOG_WARNING: _fetchAndProcessData_ - Header '${headerName}' tidak ditemukan di sheet '${sheetName}'.`);
-      }
-      propToIndexMap[propName] = index;
-    }
-
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      const item = {};
-      let hasIdentifier = false;
-      let isValid = true;
-
-      // Proses setiap kolom berdasarkan headerMap
-      for (const propName in propToIndexMap) {
-        const index = propToIndexMap[propName];
-        if (index !== -1 && row[index] !== undefined) {
-          item[propName] = row[index];
-          // Asumsikan identifier adalah 'id' atau 'name'
-          if ((propName.toLowerCase().includes('id') || propName.toLowerCase().includes('name')) && String(item[propName]).trim() !== '') {
-            hasIdentifier = true;
-          }
-        } else {
-          item[propName] = null; // Beri nilai null jika kolom tidak ada atau kosong
-        }
-      }
-      
-      if (!hasIdentifier) {
-        continue; // Lewati baris jika tidak ada identifier (misal: baris kosong)
-      }
-
-      // Logika pencarian (jika ada)
-      if (options.searchTerm && options.searchColumns && options.searchColumns.length > 0) {
-        const searchTerm = String(options.searchTerm).toLowerCase().trim();
-        const isMatch = options.searchColumns.some(searchProp => {
-          const headerName = headerMap[searchProp];
-          const colIndex = headers.indexOf(headerName.toLowerCase().replace(/ /g, ''));
-          return colIndex !== -1 && row[colIndex] && String(row[colIndex]).toLowerCase().includes(searchTerm);
-        });
-        if (!isMatch) {
-          isValid = false; // Jika tidak cocok dengan pencarian, tandai tidak valid
-        }
-      }
-
-      if (isValid) {
-         // Lakukan manualEscapeHtml untuk semua properti yang berupa string
-        for(const key in item) {
-            if(typeof item[key] === 'string') {
-                item[key] = manualEscapeHtml(item[key]);
-            }
-        }
-        results.push(item);
-      }
-    }
-    
-    return { success: true, data: results, totalRecords: results.length };
-
+    const dependencies = {
+      categories: _processSheetData_(allData[CATEGORY_SHEET_NAME], { id: 'CategoryID', name: 'NamaKategori' }),
+      baseUnits: _processSheetData_(allData[BASE_UNIT_SHEET_NAME], { id: 'BaseUnitID', name: 'NamaUnitDasar' }),
+      units: _processSheetData_(allData[UNIT_SHEET_NAME], { id: 'UnitID', name: 'NamaUnit', ref: 'BaseUnitID_Ref' }),
+      warehouses: _processSheetData_(allData[WAREHOUSE_SHEET_NAME], { id: 'WarehouseID', name: 'NamaGudang' }),
+      suppliers: _processSheetData_(allData[SUPPLIER_SHEET_NAME], { id: 'SupplierID', name: 'NamaPemasok' })
+    };
+    return { success: true, data: dependencies };
   } catch (e) {
-    Logger.log(`LOG_ERROR: Error in _fetchAndProcessData_ for sheet "${sheetName}": ${e.toString()}\nStack: ${e.stack}`);
-    return { success: false, message: `Gagal memproses data dari ${sheetName}: ` + e.message, data: [] };
+    return { success: false, message: 'Gagal memuat data pendukung form: ' + e.message };
+  }
+}
+
+function getCategories() {
+  try {
+    const sheetData = getDataFromSheets_([CATEGORY_SHEET_NAME, PRODUCT_SHEET_NAME]);
+    const categoriesData = sheetData[CATEGORY_SHEET_NAME];
+    const productsData = sheetData[PRODUCT_SHEET_NAME];
+
+    const headerMap = { 'id': 'CategoryID', 'name': 'NamaKategori' };
+    const categories = _processSheetData_(categoriesData, headerMap);
+    
+    // Logika spesifik untuk menghitung produk
+    categories.forEach(cat => cat.jumlahProduk = 0);
+
+    if (productsData && productsData.length > 1) {
+      const productHeaders = productsData[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
+      const categoryIdRefIndex = productHeaders.indexOf('categoryid_ref');
+      if (categoryIdRefIndex !== -1) {
+        const productCounts = {};
+        for (let i = 1; i < productsData.length; i++) {
+          const catId = String(productsData[i][categoryIdRefIndex]).trim();
+          if (catId) {
+            productCounts[catId] = (productCounts[catId] || 0) + 1;
+          }
+        }
+        categories.forEach(category => {
+          category.jumlahProduk = productCounts[category.id] || 0;
+        });
+      }
+    }
+    return { success: true, data: categories, totalRecords: categories.length };
+  } catch (e) {
+    return { success: false, message: 'Gagal mengambil data kategori: ' + e.message, data: [] };
+  }
+}
+
+function getBaseUnits() {
+  try {
+    const sheetData = getDataFromSheets_([BASE_UNIT_SHEET_NAME])[BASE_UNIT_SHEET_NAME];
+    const headerMap = { 'id': 'BaseUnitID', 'name': 'NamaUnitDasar' };
+    const processedData = _processSheetData_(sheetData, headerMap);
+    return { success: true, data: processedData, totalRecords: processedData.length };
+  } catch(e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function getUnits(options = {}) {
+  try {
+    const allSheetData = getDataFromSheets_([UNIT_SHEET_NAME, BASE_UNIT_SHEET_NAME]);
+    const unitsData = allSheetData[UNIT_SHEET_NAME];
+    const baseUnitsData = allSheetData[BASE_UNIT_SHEET_NAME];
+
+    // Buat Peta Nama untuk BaseUnit
+    const baseUnitNameMap = {};
+    if(baseUnitsData) {
+      const processedBaseUnits = _processSheetData_(baseUnitsData, { 'id': 'BaseUnitID', 'name': 'NamaUnitDasar' });
+      processedBaseUnits.forEach(bu => { 
+          baseUnitNameMap[bu.id] = bu.name; 
+      });
+    }
+
+    // Proses data Unit
+    const unitHeaderMap = {
+        'id': 'UnitID', 'name': 'NamaUnit', 'singkatanUnit': 'SingkatanUnit',
+        'baseUnitIdRef': 'BaseUnitID_Ref', 'dibuatPada': 'DibuatPada'
+    };
+    let units = _processSheetData_(unitsData, unitHeaderMap);
+
+    // Tambahkan nama base unit ke setiap objek unit
+    units.forEach(unit => {
+        unit.namaBaseUnit = baseUnitNameMap[unit.baseUnitIdRef] || `[ID: ${unit.baseUnitIdRef}]`;
+        if (unit.dibuatPada instanceof Date) {
+            unit.dibuatPada = unit.dibuatPada.toISOString();
+        }
+    });
+
+    return { success: true, data: units, totalRecords: units.length };
+  } catch (e) {
+    return { success: false, message: 'Gagal mengambil Unit Pengukuran: ' + e.message };
+  }
+}
+
+function getWarehouses(options = {}) {
+  try {
+    const sheetData = getDataFromSheets_([WAREHOUSE_SHEET_NAME])[WAREHOUSE_SHEET_NAME];
+    const headerMap = {
+      'id': 'WarehouseID', 'name': 'NamaGudang', 'emailGudang': 'EmailGudang',
+      'nomorTelepon': 'NomorTeleponGudang', 'kotaKabupaten': 'KotaKabupatenGudang',
+      'kodePos': 'KodePosGudang', 'dibuatPada': 'DibuatPada'
+    };
+    let processedData = _processSheetData_(sheetData, headerMap);
+    if (options.searchTerm) {
+      const searchTerm = options.searchTerm.toLowerCase();
+      processedData = processedData.filter(item =>
+        (item.name && item.name.toLowerCase().includes(searchTerm)) ||
+        (item.kotaKabupaten && item.kotaKabupaten.toLowerCase().includes(searchTerm))
+      );
+    }
+    return { success: true, data: processedData, totalRecords: processedData.length };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function getSuppliers(options = {}) {
+  try {
+    const sheetData = getDataFromSheets_([SUPPLIER_SHEET_NAME])[SUPPLIER_SHEET_NAME];
+    const headerMap = {
+      'id': 'SupplierID', 'name': 'NamaPemasok', 'nomorTelepon': 'NomorTelepon',
+      'emailPemasok': 'EmailPemasok', 'alamatPemasok': 'AlamatPemasok', 'dibuatPada': 'DibuatPada'
+    };
+    let processedData = _processSheetData_(sheetData, headerMap);
+    if (options.searchTerm) {
+      const searchTerm = options.searchTerm.toLowerCase();
+      processedData = processedData.filter(item =>
+        (item.name && item.name.toLowerCase().includes(searchTerm)) ||
+        (item.emailPemasok && item.emailPemasok.toLowerCase().includes(searchTerm))
+      );
+    }
+    return { success: true, data: processedData, totalRecords: processedData.length };
+  } catch (e) {
+    return { success: false, message: e.message };
   }
 }
 
 // ==========================================================================
 // FUNGSI-FUNGSI UNTUK MODUL KATEGORI
 // ==========================================================================
-function getCategories() {
-  try {
-    // Langkah 1: Ambil data kategori dasar menggunakan helper baru
-    const categoryHeaderMap = {
-      'id': 'CategoryID',
-      'name': 'NamaKategori'
-    };
-    const categoriesResponse = _fetchAndProcessData_(CATEGORY_SHEET_NAME, categoryHeaderMap);
-
-    if (!categoriesResponse.success || categoriesResponse.data.length === 0) {
-      return categoriesResponse; // Kembalikan hasil jika gagal atau kosong
-    }
-    
-    const categories = categoriesResponse.data;
-    // Inisialisasi jumlahProduk
-    categories.forEach(cat => cat.jumlahProduk = 0);
-
-    // Langkah 2: Lakukan logika spesifik untuk menghitung produk (logika ini tidak bisa digeneralisasi)
-    const productSheet = getSheet_(PRODUCT_SHEET_NAME);
-    if (!productSheet) {
-      Logger.log(`LOG_WARNING: getCategories - Sheet "${PRODUCT_SHEET_NAME}" tidak ditemukan, skipping product count.`);
-      return { success: true, data: categories, totalRecords: categories.length };
-    }
-
-    const productValues = productSheet.getDataRange().getValues();
-    if (productValues.length <= 1) {
-      return { success: true, data: categories, totalRecords: categories.length };
-    }
-
-    const productHeaders = productValues[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
-    const categoryIdRefIndex = productHeaders.indexOf('categoryid_ref');
-
-    if (categoryIdRefIndex !== -1) {
-      const productCounts = {};
-      for (let i = 1; i < productValues.length; i++) {
-        const catId = String(productValues[i][categoryIdRefIndex]).trim();
-        if (catId) {
-          productCounts[catId] = (productCounts[catId] || 0) + 1;
-        }
-      }
-      categories.forEach(category => {
-        category.jumlahProduk = productCounts[category.id] || 0;
-      });
-    } else {
-      Logger.log(`LOG_WARNING: getCategories - Kolom 'categoryid_ref' tidak ditemukan di Products.`);
-    }
-    
-    Logger.log("LOG_INFO: getCategories - Successfully processed categories with product counts.");
-    return { success: true, data: categories, totalRecords: categories.length };
-  } catch (e) {
-    Logger.log("LOG_ERROR: Error in getCategories: " + e.toString() + " Stack: " + e.stack);
-    return { success: false, message: 'Gagal mengambil data kategori: ' + e.message, data: [] };
-  }
-}
-
 function addCategory(categoryData) {
   Logger.log("LOG_INFO: addCategory - Received: " + JSON.stringify(categoryData));
   const categoryName = String(categoryData.namaKategori || '').trim();
@@ -1053,15 +1000,6 @@ function archiveProduct(productId) {
 // ==========================================================================
 // FUNGSI-FUNGSI UNTUK MODUL UNIT DASAR (BaseUnits) - VERSI REVISI
 // ==========================================================================
-function getBaseUnits() {
-  const headerMap = {
-    'id': 'BaseUnitID',
-    'name': 'NamaUnitDasar'
-    // 'dibuatPada': 'DibuatPada' // Contoh jika ingin mengambil kolom lain
-  };
-  return _fetchAndProcessData_(BASE_UNIT_SHEET_NAME, headerMap);
-}
-
 function addBaseUnit(data) {
   Logger.log("LOG_INFO: addBaseUnit - Received: " + JSON.stringify(data));
   const name = String(data.namaBaseUnit || '').trim();
@@ -1175,62 +1113,6 @@ function deleteBaseUnit(baseUnitId) {
 // ==========================================================================
 // FUNGSI-FUNGSI UNTUK MODUL UNIT PENGUKURAN (Units)
 // ==========================================================================
-function getUnits(options = {}) { 
-  try {
-    // Langkah 1: Ambil data BaseUnits untuk mapping nama
-    const baseUnitsResponse = getBaseUnits();
-    if (!baseUnitsResponse.success) {
-        Logger.log("LOG_WARNING: getUnits - Tidak dapat memuat data BaseUnits untuk mapping.");
-        // Tetap lanjutkan, tapi nama base unit akan kosong
-    }
-    const baseUnitNameMap = {};
-    if(baseUnitsResponse.data) {
-        baseUnitsResponse.data.forEach(bu => { 
-            baseUnitNameMap[bu.id] = bu.name; 
-        });
-    }
-
-    // Langkah 2: Ambil data Unit menggunakan helper baru
-    const unitHeaderMap = {
-        'id': 'UnitID',
-        'name': 'NamaUnit',
-        'singkatanUnit': 'SingkatanUnit',
-        'baseUnitIdRef': 'BaseUnitID_Ref',
-        'dibuatPada': 'DibuatPada'
-    };
-    
-    const searchOptions = {
-        searchTerm: options.searchTerm,
-        searchColumns: ['name', 'singkatanUnit'] 
-    };
-
-    const unitsResponse = _fetchAndProcessData_(UNIT_SHEET_NAME, unitHeaderMap, searchOptions);
-    if (!unitsResponse.success) {
-      return unitsResponse;
-    }
-    
-    let units = unitsResponse.data;
-
-    const baseUnitIdFilter = options.baseUnitId_filter ? String(options.baseUnitId_filter).trim() : null;
-    if (baseUnitIdFilter) {
-        units = units.filter(u => u.baseUnitIdRef === baseUnitIdFilter);
-    }
-
-    units.forEach(unit => {
-        unit.namaBaseUnit = baseUnitNameMap[unit.baseUnitIdRef] || `[ID: ${unit.baseUnitIdRef}]`;
-        if (unit.dibuatPada instanceof Date) {
-            unit.dibuatPada = unit.dibuatPada.toISOString();
-        }
-    });
-
-    Logger.log(`LOG_INFO: getUnits - Retrieved ${units.length} units.`);
-    return { success: true, data: units, totalRecords: units.length };
-  } catch (e) {
-    Logger.log("LOG_ERROR: Error in getUnits: " + e.toString() + "\nStack: " + e.stack);
-    return { success: false, message: 'Gagal mengambil Unit Pengukuran: ' + e.toString(), data: [] };
-  }
-}
-
 function addUnit(data) {
   Logger.log("LOG_INFO: addUnit - Received: " + JSON.stringify(data));
   const name = String(data.namaUnit || '').trim();
@@ -1378,25 +1260,6 @@ function deleteUnit(unitId) {
 // ==========================================================================
 // FUNGSI-FUNGSI UNTUK MODUL GUDANG (Warehouses)
 // ==========================================================================
-function getWarehouses(options = {}) {
-  const headerMap = {
-    'id': 'WarehouseID',
-    'name': 'NamaGudang',
-    'emailGudang': 'EmailGudang',
-    'nomorTelepon': 'NomorTeleponGudang',
-    'kotaKabupaten': 'KotaKabupatenGudang',
-    'kodePos': 'KodePosGudang',
-    'dibuatPada': 'DibuatPada'
-  };
-
-  const searchOptions = {
-      searchTerm: options.searchTerm,
-      searchColumns: ['name', 'kotaKabupaten'] // Properti di JS
-  };
-
-  return _fetchAndProcessData_(WAREHOUSE_SHEET_NAME, headerMap, searchOptions);
-}
-
 function addWarehouse(data) {
   Logger.log("LOG_INFO: addWarehouse - Received: " + JSON.stringify(data));
   const namaGudang = String(data.namaGudang || '').trim();
@@ -1521,67 +1384,6 @@ function deleteWarehouse(warehouseId) {
 // ==========================================================================
 // FUNGSI-FUNGSI UNTUK MODUL PEMASOK (Suppliers)
 // ==========================================================================
-function getSuppliers(options = {}) {
-  const headerMap = {
-    'id': 'SupplierID',
-    'name': 'NamaPemasok',
-    'nomorTelepon': 'NomorTelepon',
-    'emailPemasok': 'EmailPemasok',
-    'alamatPemasok': 'AlamatPemasok',
-    'dibuatPada': 'DibuatPada'
-  };
-
-  const searchOptions = {
-      searchTerm: options.searchTerm,
-      searchColumns: ['name', 'emailPemasok']
-  };
-
-  return _fetchAndProcessData_(SUPPLIER_SHEET_NAME, headerMap, searchOptions);
-}
-
-function addSupplier(data) {
-  Logger.log("LOG_INFO: addSupplier - Received: " + JSON.stringify(data));
-  const namaPemasok = String(data.namaPemasok || '').trim();
-  if (!namaPemasok) {
-    return { success: false, message: 'Nama Pemasok wajib diisi.' };
-  }
-
-  try {
-    const sheet = getSheet_(SUPPLIER_SHEET_NAME);
-    if (!sheet) return { success: false, message: `Sheet "${SUPPLIER_SHEET_NAME}" tidak ditemukan.` };
-
-    if (checkForDuplicate_(sheet, namaPemasok, 'namapemasok')) {
-      return { success: false, message: 'Nama Pemasok sudah ada.' };
-    }
-
-    const newId = generateNextId_(sheet, 'supplierid', 'SUP');
-    
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
-    const newRowData = {
-      supplierid: newId,
-      namapemasok: namaPemasok,
-      nomortelepon: String(data.nomorTelepon || '').trim() ? "'" + String(data.nomorTelepon).trim() : '',
-      emailpemasok: String(data.emailPemasok || '').trim(),
-      alamatpemasok: String(data.alamatPemasok || '').trim(),
-      dibuatpada: new Date()
-    };
-    const newRow = headers.map(header => newRowData[header] || '');
-    
-    sheet.appendRow(newRow);
-    SpreadsheetApp.flush();
-
-    Logger.log("LOG_INFO: addSupplier - Supplier added: " + newId);
-    return { 
-        success: true, 
-        message: 'Pemasok berhasil ditambahkan!',
-        supplier: { supplierId: newId, namaPemasok: manualEscapeHtml(namaPemasok) }
-    };
-  } catch (e) {
-    Logger.log("LOG_ERROR: Error in addSupplier: " + e.toString() + "\nStack: " + e.stack);
-    return { success: false, message: 'Gagal menambahkan Pemasok: ' + e.message };
-  }
-}
-
 function updateSupplier(data) {
   Logger.log("LOG_INFO: updateSupplier - Received: " + JSON.stringify(data));
   const id = String(data.supplierId || '').trim();
