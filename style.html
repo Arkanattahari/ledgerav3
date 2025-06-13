@@ -19,13 +19,15 @@
     --color-text-light: #FFFFFF;
     --color-text-subtle: #6C757D; /* Abu-abu netral */
 
-    /* Warna Status & Notifikasi */
-    --color-success: #28a745;
-    --color-success-rgb: 40, 167, 69;
-    --color-danger: #dc3545;
+    /* Warna Status, Notifikasi & Badge */
+    --color-success: #28a745; /* Hijau */
+    --color-success-rgb: 40, 167, 69; 
+    --color-danger: #dc3545;  /* Merah */
     --color-danger-rgb: 220, 53, 69;
-    --color-info: #17a2b8;
-    --color-warning: #ffc107;
+    --color-info: #17a2b8;  /* Eastern Blue */
+    --color-info-rgb: 23, 162, 184;
+    --color-warning: #ffc107; /* Kuning */
+    --color-warning-rgb: 255, 193, 7;
 
     /* Ukuran & Jarak (Spacing) */
     --spacing-small: 8px;
@@ -140,14 +142,14 @@ hr.form-separator {
 .sidebar-dropdown > summary { list-style: none; }
 .sidebar-dropdown > summary::-webkit-details-marker { display: none; }
 .sidebar-dropdown > summary::after {
-    content: '\f078'; /* FontAwesome chevron-down */
+    content: '\f054'; /* FontAwesome chevron-right */
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
     margin-left: auto;
     transition: transform var(--transition-fast);
 }
 .sidebar-dropdown[open] > summary::after {
-    transform: rotate(-180deg);
+    transform: rotate(90deg);
 }
 .sidebar-dropdown ul {
     list-style: none;
@@ -247,6 +249,7 @@ hr.form-separator {
     font-size: 0.95em;
     transition: all var(--transition-fast);
     background-color: var(--color-bg-card);
+    color: var(--color-text-dark);
 }
 .form-group input:focus,
 .form-group select:focus,
@@ -267,6 +270,7 @@ hr.form-separator {
     margin-top: var(--spacing-large);
     justify-content: flex-end;
 }
+
 
 /* ==========================================================================
    5. Komponen: Tombol
@@ -354,7 +358,7 @@ table th, table td {
 table th {
     background-color: #f8f9fa;
     font-weight: 600;
-    color: var(--color-text-dark);
+    color: var(--color-text-subtle);
     text-transform: uppercase;
     font-size: 0.85em; /* Ukuran font diperbesar sedikit */
     letter-spacing: 0.5px;
@@ -519,7 +523,7 @@ table tbody tr:last-child td {
 /* Gaya untuk Search Bar dengan Ikon */
 .input-with-icon {
     position: relative;
-    width: 280px; /* Lebar default search bar */
+    width: 280px;
 }
 
 .search-bar-icon-prefix {
@@ -534,11 +538,13 @@ table tbody tr:last-child td {
 
 .input-field-with-icon-prefix {
     height: 42px; /* Menyamakan tinggi dengan tombol .btn */
+    line-height: 1,5;
     width: 100%;
     padding-left: 40px; /* Memberi ruang untuk ikon */
     border: 1px solid var(--color-border-line);
     border-radius: var(--border-radius);
     transition: all var(--transition-fast);
+
 }
 .input-field-with-icon-prefix:focus {
     border-color: var(--color-primary-accent);
@@ -588,5 +594,333 @@ table tbody tr:last-child td {
     background-color: #f1f3f5;
     color: var(--color-primary-accent);
 }
+
+/* ==========================================================================
+   12. KOMPONEN: AUTOCOMPLETE SEARCH RESULTS
+   ========================================================================== */
+.search-results-container {
+    display: none; /* Sembunyi secara default */
+    position: absolute;
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-border-line);
+    border-top: none;
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    box-shadow: var(--shadow-medium);
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 999; /* Muncul di atas elemen lain */
+}
+
+.search-result-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-top: 1px solid var(--color-border-line);
+}
+
+.search-result-item:hover {
+    background-color: #f1f3f5;
+}
+
+.search-result-item .product-name {
+    font-weight: 500;
+    color: var(--color-text-dark);
+}
+
+.search-result-item .product-code-stock {
+    font-size: 0.85em;
+    color: var(--color-text-subtle);
+}
+
+/* ==========================================================================
+   13. PERBAIKAN KHUSUS (CSS OVERRIDE)
+   ========================================================================== */
+
+/* Aturan ini SANGAT SPESIFIK untuk memastikan padding diterapkan 
+   pada search bar di form pembelian dan mengalahkan style lain. */
+#purchaseSearchWrapper input.input-field-with-icon-prefix {
+    padding-left: 40px !important;
+}
+
+/* Style untuk input dengan simbol (Rp atau %) */
+.input-with-symbol {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--color-border-line);
+    border-radius: var(--border-radius);
+    background-color: var(--color-bg-card);
+    transition: all var(--transition-fast);
+}
+.input-with-symbol:focus-within {
+    border-color: var(--color-primary-accent);
+    box-shadow: 0 0 0 3px rgba(var(--color-primary-accent-rgb), 0.2);
+}
+.input-with-symbol input {
+    border: none !important;
+    box-shadow: none !important;
+    flex-grow: 1;
+}
+.input-with-symbol span {
+    padding: 0 12px;
+    background-color: #f8f9fa;
+    height: 40px;
+    line-height: 40px;
+    border-left: 1px solid var(--color-border-line);
+    color: var(--color-text-subtle);
+}
+
+/* ==========================================================================
+   14. STYLE KHUSUS UNTUK TABEL RINCIAN PESANAN
+   ========================================================================== */
+.item-product-code {
+    font-weight: 600; /* Sedikit tebal */
+    color: var(--color-text-dark);
+    margin-bottom: 4px; /* Jarak ke nama produk di bawahnya */
+}
+
+.item-name-wrapper {
+    display: inline-flex; /* Membuat wrapper mengikuti lebar konten */
+    align-items: center;
+    gap: 4px;
+    background-color: rgba(var(--color-primary-accent-rgb), 0.1); /* Warna aksen yang lembut */
+    padding: 2px 4px 2px 8px; /* Atur padding agar pas */
+    border-radius: var(--border-radius);
+    line-height: 1;
+}
+
+.item-product-name {
+    font-size: 0.85em; /* Ukuran font lebih kecil */
+    color: var(--color-primary-accent); /* Warna teks senada dengan badge */
+    font-weight: 500;
+}
+
+/* Mengkecilkan ikon pensil di dalam badge */
+.item-name-wrapper .edit-item-button {
+    width: 24px;
+    height: 24px;
+    font-size: 0.8em; /* Ukuran ikon lebih kecil */
+}
+
+/* ==========================================================================
+   15. KOMPONEN: QTY STEPPER
+   ========================================================================== */
+.qty-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.qty-stepper .qty-btn {
+    background-color: var(--color-primary-accent);
+    color: white;
+    border: none;
+    width: 32px;
+    height: 32px;
+    font-size: 1.2em;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 32px; /* Vertically center the +/- symbol */
+    padding: 0;
+}
+
+.qty-stepper .qty-minus {
+    border-radius: var(--border-radius) 0 0 var(--border-radius);
+}
+
+.qty-stepper .qty-plus {
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
+}
+
+.qty-stepper .qty-input {
+    width: 50px;
+    height: 32px;
+    text-align: center;
+    border: 1px solid var(--color-border-line);
+    border-left: none;
+    border-right: none;
+    padding: 0 4px;
+    font-weight: 500;
+}
+
+/* Sembunyikan panah default dari input number */
+.qty-stepper .qty-input::-webkit-outer-spin-button,
+.qty-stepper .qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.qty-stepper .qty-input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* ==========================================================================
+   16. KOMPONEN: MODAL DIALOG
+   ========================================================================== */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Ubah agar modal mulai dari atas */
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    overflow-y: auto; /* Izinkan overlay untuk scroll secara vertikal */
+    padding: 50px 20px; /* Beri jarak 50px atas-bawah, 20px kiri-kanan */
+}
+
+/* Kelas untuk mengunci scroll di body */
+body.body-modal-open {
+    overflow: hidden;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+}
+
+.modal-dialog {
+    background-color: var(--color-bg-card);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-medium);
+    width: 90%;
+    max-width: 500px;
+    transform: translateY(-50px);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay.active .modal-dialog {
+    transform: translateY(0);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-medium);
+    border-bottom: 1px solid var(--color-border-line);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modal-close-button {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    font-weight: 300;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    color: var(--color-text-subtle);
+}
+
+.modal-body {
+    padding: var(--spacing-large);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-medium);
+    padding: var(--spacing-medium);
+    border-top: 1px solid var(--color-border-line);
+}
+
+/* ==========================================================================
+   17. KOMPONEN: BADGE STATUS
+   ========================================================================== */
+/* Style Badge Status */
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px; /* Sedikit lebih lebar */
+    border-radius: var(--border-radius);
+    font-size: 0.9em;
+    font-weight: 500;
+    color: #fff;
+    text-align: center;
+    line-height: 1.4; /* Menyesuaikan tinggi baris */
+}
+
+.status-badge.diterima {
+    background-color: rgba(var(--color-success-rgb), 0.2);
+    color: var(--color-success);
+}
+
+.status-badge.dipesan {
+    background-color: rgba(var(--color-warning-rgb), 0.2);
+    color: var(--color-warning);
+}
+
+.status-badge.ditahan {
+    background-color: rgba(var(--color-info-rgb), 0.2);
+    color: var(--color-info);
+}
+
+.status-badge.dibatalkan {
+    background-color: var(--color-danger-rgb), 0.2);
+    color: var(--color-danger);
+}
+
+/* Gaya default jika status tidak dikenali */
+.status-badge {
+    background-color: var(--color-text-subtle);
+}
+
+/* ==========================================================================
+   18. KOMPONEN: BADGE SEL TABEL
+   ========================================================================== */
+.cell-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: var(--border-radius);
+    font-size: 0.9em;
+    font-weight: 500;
+    line-height: 1.4;
+    text-align: center;
+}
+
+/* Badge untuk Kode & Referensi */
+.badge-code {
+    background-color: rgba(var(--color-danger-rgb), 0.2);
+    color: var(--color-danger);
+}
+
+/* Badge untuk Tanggal */
+.badge-date {
+    background-color: rgba(var(--color-info-rgb), 0.2);
+    color: var(--color-info);
+}
+
+/* Badge untuk Unit */
+.badge-unit {
+    background-color: rgba(var(--color-success-rgb), 0.2);
+    color: var(--color-success);
+}
+
+/* Badge untuk Tipe Pembayaran */
+.badge-payment {
+    color: #fff;
+}
+.badge-payment.tunai {
+    background-color: rgba(var(--color-primary-accent-rgb), 0.2);
+    color: var(--color-primary-accent);
+}
+.badge-payment.kredit {
+    background-color: rgba(var(--color-primary-accent-rgb), 0.2);
+    color: var(--color-primary-accent);
+}
+.badge-payment.transfer-bank {
+    background-color: rgba(var(--color-primary-accent-rgb), 0.2);
+    color: var(--color-primary-accent);
+}
+.badge-payment.lainnya {
+    background-color: rgba(var(--color-primary-accent-rgb), 0.2);
+    color: var(--color-primary-accent);
+}
+
 
 </style>
