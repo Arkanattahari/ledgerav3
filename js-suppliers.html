@@ -1,0 +1,179 @@
+<script>
+// Modul untuk fungsionalitas halaman Manajemen Pemasok (Versi Final Refactor)
+
+function initializeSuppliers() {
+    // --- 1. DEKLARASI ELEMEN & VARIABEL ---
+    const mainContent = document.getElementById('mainContentArea');
+    const supplierForm = document.getElementById('supplierForm');
+    const suppliersTableBody = document.querySelector('#suppliersTable tbody');
+    const supplierSearchInput = document.getElementById('supplierSearchInput');
+
+    // Elemen Form
+    const supplierIdInput = document.getElementById('supplierIdInput');
+    const supplierNameInput = document.getElementById('supplierNameInput');
+    const supplierPhoneInput = document.getElementById('supplierPhoneInput');
+    const supplierEmailInput = document.getElementById('supplierEmailInput');
+    const supplierAddressInput = document.getElementById('supplierAddressInput');
+    const supplierFormTitleEl = document.getElementById('supplierFormTitle');
+    const submitSupplierButton = document.getElementById('submitSupplierButton');
+
+    // State
+    let supplierCache = {};
+
+    // --- 1. FUNGSI LOAD SUPPLIER ---
+    window.loadSuppliers = function() {
+        if (!suppliersTableBody) return;
+        const searchTerm = supplierSearchInput ? supplierSearchInput.value.trim() : "";
+        window.showLoading(true, 'Memuat daftar pemasok...');
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    supplierCache = {};
+                    const suppliers = response.data || [];
+                    suppliers.forEach(sup => {
+                        if (sup && sup.id) supplierCache[sup.id] = sup;
+                    });
+                    renderSuppliersTable(suppliers);
+                } else {
+                    const failMsg = response && response.message ? response.message : 'Gagal memuat data Pemasok.';
+                    window.showToast(failMsg, 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error: ' + errorMessage, 'error');
+                console.error('Gagal memuat data pemasok:', error);
+            })
+            .getSuppliers({ searchTerm });
+    };
+
+    function renderSuppliersTable(suppliers) {
+        if (!suppliersTableBody) return;
+        suppliersTableBody.innerHTML = '';
+        if (suppliers.length === 0) {
+            suppliersTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Tidak ada Pemasok terdaftar.</td></tr>`;
+            return;
+        }
+        suppliers.forEach(sup => {
+            const row = suppliersTableBody.insertRow();
+            row.dataset.supplierId = sup.id;
+            row.insertCell(0).textContent = sup.name || 'N/A';
+            row.insertCell(1).textContent = sup.nomorTelepon || 'N/A';
+            row.insertCell(2).textContent = sup.dibuatPada ? new Date(sup.dibuatPada).toLocaleDateString('id-ID') : 'N/A';
+            const actionsCell = row.insertCell(3);
+            actionsCell.classList.add('action-buttons');
+            actionsCell.innerHTML = createActionButtonsHTML('supplier', { edit: true, delete: true });
+        });
+    }
+
+    // --- 2. FUNGSI-FUNGSI LOKAL ---
+    function showSupplierForm(supplier = null) {
+        resetSupplierForm();
+        if (supplier && supplier.id) {
+            supplierFormTitleEl.textContent = 'Edit Pemasok';
+            supplierIdInput.value = supplier.id;
+            supplierNameInput.value = supplier.name || '';
+            supplierPhoneInput.value = supplier.nomorTelepon || '';
+            supplierEmailInput.value = supplier.emailPemasok || '';
+            supplierAddressInput.value = supplier.alamatPemasok || '';
+            submitSupplierButton.innerHTML = '<i class="fas fa-save"></i> Perbarui';
+        }
+        window.showPage('supplierFormPage', 'Pemasok', supplier ? 'Edit Pemasok' : 'Tambah Pemasok Baru');
+    }
+
+    function getSupplierFormData() {
+        const serverData = {
+            supplierId: supplierIdInput.value || null,
+            namaPemasok: supplierNameInput.value.trim(),
+            nomorTelepon: supplierPhoneInput.value.trim(),
+            emailPemasok: supplierEmailInput.value.trim(),
+            alamatPemasok: supplierAddressInput.value.trim()
+        };
+        if (!serverData.namaPemasok) { 
+            window.showToast('Nama Pemasok wajib diisi.', 'error'); 
+            return null; 
+        }
+        return serverData;
+    }
+
+    function resetSupplierForm() {
+        if (supplierForm) supplierForm.reset();
+        if (supplierIdInput) supplierIdInput.value = '';
+        if (supplierFormTitleEl) supplierFormTitleEl.textContent = 'Tambah Pemasok Baru';
+        if (submitSupplierButton) submitSupplierButton.innerHTML = '<i class="fas fa-plus"></i> Simpan';
+    }
+
+    // --- 3. EVENT LISTENERS ---
+    if (supplierForm) {
+        supplierForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = getSupplierFormData();
+            if (!formData) return;
+            const action = formData.supplierId ? 'updateSupplier' : 'addSupplier';
+            window.showLoading(true, formData.supplierId ? 'Memperbarui...' : 'Menyimpan...');
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response && response.success) {
+                        window.showToast(response.message, 'success');
+                        window.loadSuppliers();
+                        window.showPage('suppliersPage', 'Pemasok');
+                    } else {
+                        const failMsg = response && response.message ? response.message : 'Operasi Gagal.';
+                        window.showToast(failMsg, 'error');
+                    }
+                })
+                .withFailureHandler(error => {
+                    window.showLoading(false);
+                    const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error: ' + errorMessage, 'error');
+                    console.error('Gagal menyimpan Pemasok:', error);
+                })
+                [action](formData);
+        });
+    }
+
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target.closest('#addSupplierButton')) {
+                showSupplierForm();
+            } else if (target.closest('#backToSupplierListButton')) {
+                window.showPage('suppliersPage', 'Pemasok');
+            } else if (target.closest('#resetSupplierFormButton')) {
+                resetSupplierForm();
+            } else if (target.closest('.edit-supplier-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.supplierId) {
+                    const supplierToEdit = supplierCache[row.dataset.supplierId];
+                    if (supplierToEdit) showSupplierForm(supplierToEdit);
+                }
+            } else if (target.closest('.delete-supplier-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.supplierId) {
+                    const supplierToDelete = supplierCache[row.dataset.supplierId];
+                    if (supplierToDelete) {
+                        handleItemAction({
+                            itemId: supplierToDelete.id,
+                            itemName: supplierToDelete.name,
+                            action: 'menghapus',
+                            serverFunctionName: 'deleteSupplier',
+                            loadDataFunction: window.loadSuppliers
+                        });
+                    }
+                }
+            }
+        });
+    }
+
+    if (supplierSearchInput) {
+        let searchTimeout;
+        supplierSearchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => { window.loadSuppliers(); }, 300);
+        });
+    }
+}
+</script>
