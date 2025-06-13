@@ -1,0 +1,389 @@
+<script>
+// Modul untuk fungsionalitas halaman Manajemen Unit Dasar dan Unit Pengukuran (Versi Refactor)
+
+/**
+ * ==========================================================================
+ * BAGIAN UNTUK UNIT DASAR (BaseUnits)
+ * ==========================================================================
+ */
+function initializeBaseUnits() {
+    // --- 1. DEKLARASI ELEMEN & VARIABEL ---
+    const mainContent = document.getElementById('mainContentArea');
+    const baseUnitForm = document.getElementById('baseUnitForm');
+    const baseUnitsTableBody = document.querySelector('#baseUnitsTable tbody');
+    
+    // Elemen Form
+    const baseUnitIdInput = document.getElementById('baseUnitIdInput');
+    const baseUnitNameInput = document.getElementById('baseUnitNameInput');
+    const baseUnitFormTitleEl = document.getElementById('baseUnitFormTitle');
+    const submitBaseUnitButton = document.getElementById('submitBaseUnitButton');
+
+    // State
+    let baseUnitCache = {};
+
+    // --- 2. FUNGSI-FUNGSI LOKAL ---
+
+    /**
+     * Memuat data Unit Dasar dari server.
+     */
+    window.loadBaseUnits = function() {
+        if (!baseUnitsTableBody) return;
+        window.showLoading(true, 'Memuat Unit Dasar...');
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    baseUnitCache = {};
+                    const baseUnits = response.data || [];
+                    baseUnits.forEach(bu => {
+                        if (bu && bu.baseUnitId) baseUnitCache[bu.baseUnitId] = bu;
+                    });
+                    renderBaseUnitsTable(baseUnits);
+                } else {
+                    window.showToast(response.message || 'Gagal memuat Unit Dasar.', 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error memuat data unit dasar: ' + errorMessage, 'error');
+                console.error('Gagal memuat data unit dasar:', error); // Ini membantu debugging
+            })
+            .getBaseUnits();
+    };
+
+    /**
+     * Merender data Unit Dasar ke dalam tabel.
+     * @param {Array<Object>} baseUnits - Array objek unit dasar.
+     */
+    function renderBaseUnitsTable(baseUnits) {
+        if (!baseUnitsTableBody) return;
+        baseUnitsTableBody.innerHTML = '';
+        if (baseUnits.length === 0) {
+            baseUnitsTableBody.innerHTML = '<tr><td colspan="2" style="text-align:center;">Tidak ada Unit Dasar.</td></tr>';
+            return;
+        }
+        baseUnits.forEach(bu => {
+            const row = baseUnitsTableBody.insertRow();
+            row.dataset.baseUnitId = bu.id;
+            row.insertCell(0).textContent = bu.name || 'N/A';
+            const actionsCell = row.insertCell(1);
+            actionsCell.classList.add('action-buttons');
+            actionsCell.innerHTML = createActionButtonsHTML('base-unit', { edit: true, delete: true });
+        });
+    }
+
+    /**
+     * Menampilkan form untuk menambah/mengedit Unit Dasar.
+     * @param {Object|null} baseUnit - Objek untuk diedit, atau null untuk menambah.
+     */
+    function showBaseUnitForm(baseUnit = null) {
+        resetBaseUnitForm();
+        if (baseUnit && baseUnit.baseUnitId) {
+            baseUnitFormTitleEl.textContent = 'Edit Unit Dasar';
+            baseUnitIdInput.value = baseUnit.baseUnitId;
+            baseUnitNameInput.value = baseUnit.namaBaseUnit || '';
+            submitBaseUnitButton.innerHTML = '<i class="fas fa-save"></i> Perbarui';
+        }
+        window.showPage('baseUnitFormPage', baseUnit ? 'Edit Unit Dasar' : 'Tambah Unit Dasar');
+    }
+
+    /**
+     * Mengambil data dari form Unit Dasar.
+     */
+    function getBaseUnitFormData() {
+        const namaBaseUnit = baseUnitNameInput.value.trim();
+        if (!namaBaseUnit) {
+            window.showToast('Nama Unit Dasar wajib diisi.', 'error');
+            return null;
+        }
+        return {
+            baseUnitId: baseUnitIdInput.value || null,
+            namaBaseUnit: namaBaseUnit
+        };
+    }
+    
+    /**
+     * Mereset form Unit Dasar.
+     */
+    function resetBaseUnitForm() {
+        if(baseUnitForm) baseUnitForm.reset();
+        if(baseUnitIdInput) baseUnitIdInput.value = '';
+        if(baseUnitFormTitleEl) baseUnitFormTitleEl.textContent = 'Tambah Unit Dasar Baru';
+        if(submitBaseUnitButton) submitBaseUnitButton.innerHTML = '<i class="fas fa-plus"></i> Simpan';
+    }
+
+    // --- 3. EVENT LISTENERS ---
+
+    if (baseUnitForm) {
+        baseUnitForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = getBaseUnitFormData();
+            if (!formData) return;
+            const action = formData.baseUnitId ? 'updateBaseUnit' : 'addBaseUnit';
+            window.showLoading(true, formData.baseUnitId ? 'Memperbarui...' : 'Menyimpan...');
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response.success) {
+                        window.showToast(response.message, 'success');
+                        window.loadBaseUnits();
+                        window.showPage('base-unitsPage', 'Unit Dasar');
+                    } else {
+                        window.showToast(response.message, 'error');
+                    }
+                })
+                .withFailureHandler(error => {
+                    window.showLoading(false);
+                    const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error memuat form unit dasar: ' + errorMessage, 'error');
+                    console.error('Gagal memuat form unit dasar:', error); // Ini membantu debugging
+                })
+                [action](formData);
+        });
+    }
+
+    // Listener klik utama untuk modul Base Units
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target.closest('#addBaseUnitButton')) {
+                showBaseUnitForm();
+            } else if (target.closest('#backToBaseUnitListButton')) {
+                window.showPage('base-unitsPage', 'Unit Dasar');
+            } else if (target.closest('#resetBaseUnitFormButton')) {
+                resetBaseUnitForm();
+            } else if (target.closest('.edit-base-unit-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.baseUnitId) {
+                    const baseUnitToEdit = baseUnitCache[row.dataset.baseUnitId];
+                    if (baseUnitToEdit) showBaseUnitForm(baseUnitToEdit);
+                }
+            } else if (target.closest('.delete-base-unit-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.baseUnitId) {
+                    const baseUnitToDelete = baseUnitCache[row.dataset.baseUnitId];
+                    if (baseUnitToDelete) {
+                        handleItemAction({
+                            itemId: baseUnitToDelete.baseUnitId,
+                            itemName: baseUnitToDelete.namaBaseUnit,
+                            action: 'menghapus',
+                            serverFunctionName: 'deleteBaseUnit',
+                            loadDataFunction: window.loadBaseUnits
+                        });
+                    }
+                }
+            }
+        });
+    }
+} // --- Akhir dari initializeBaseUnits ---
+
+
+/**
+ * ==========================================================================
+ * BAGIAN UNTUK UNIT PENGUKURAN (Units)
+ * ==========================================================================
+ */
+function initializeUnits() {
+    // --- 1. DEKLARASI ELEMEN & VARIABEL ---
+    const mainContent = document.getElementById('mainContentArea');
+    const unitForm = document.getElementById('unitForm');
+    const unitsTableBody = document.querySelector('#unitsTable tbody');
+
+    // Elemen Form
+    const unitIdInput = document.getElementById('unitIdInput');
+    const unitNameInput = document.getElementById('unitNameInput');
+    const unitAbbreviationInput = document.getElementById('unitAbbreviationInput');
+    const unitBaseUnitRefSelect = document.getElementById('unitBaseUnitRefSelect');
+    const unitFormTitleEl = document.getElementById('unitFormTitle');
+    const submitUnitButton = document.getElementById('submitUnitButton');
+    
+    // State
+    let unitCache = {};
+
+    // --- 2. FUNGSI-FUNGSI LOKAL ---
+    
+    /**
+     * Memuat data Unit Pengukuran dari server.
+     */
+    window.loadUnits = function() {
+        if (!unitsTableBody) return;
+        window.showLoading(true, 'Memuat Unit Pengukuran...');
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    unitCache = {};
+                    const units = response.data || [];
+                    units.forEach(u => {
+                        if (u && u.unitId) unitCache[u.unitId] = u;
+                    });
+                    renderUnitsTable(units);
+                } else {
+                    window.showToast(response.message || 'Gagal memuat Unit.', 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error memuat data: ' + errorMessage, 'error');
+                console.error('Gagal memuat produk:', error); // Ini membantu debugging
+            })
+            .getUnits({});
+    };
+
+    /**
+     * Merender data Unit Pengukuran ke dalam tabel.
+     * @param {Array<Object>} units - Array objek unit.
+     */
+    function renderUnitsTable(units) {
+        if (!unitsTableBody) return;
+        unitsTableBody.innerHTML = '';
+        if (units.length === 0) {
+            unitsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Tidak ada Unit Pengukuran.</td></tr>`;
+            return;
+        }
+        units.forEach(u => {
+            const row = unitsTableBody.insertRow();
+            row.dataset.unitId = u.id; // <-- BARU
+            row.insertCell(0).textContent = u.name || 'N/A'; // <-- BARU
+            row.insertCell(1).textContent = u.singkatanUnit || 'N/A';
+
+            // KOLOM UNIT
+            row.insertCell(2).innerHTML = `<span class="cell-badge badge-unit">${u.namaBaseUnit || 'N/A'}</span>`;
+
+            // KOLOM DIBUAT PADA
+            const dateCell = u.dibuatPada ? new Date(u.dibuatPada).toLocaleDateString('id-ID') : 'N/A';
+            row.insertCell(3).innerHTML = `<span class="cell-badge badge-date">${dateCell}</span>`;
+
+            const actionsCell = row.insertCell(4);
+            actionsCell.classList.add('action-buttons');
+            actionsCell.innerHTML = createActionButtonsHTML('unit', { edit: true, delete: true });
+        });
+    }
+
+    /**
+     * Menampilkan form untuk menambah/mengedit Unit Pengukuran.
+     * @param {Object|null} unit - Objek untuk diedit, atau null untuk menambah.
+     */
+    function showUnitForm(unit = null) {
+        resetUnitForm();
+        populateUnitBaseUnitRefDropdown(unit ? unit.baseUnitIdRef : null);
+
+        if (unit && unit.unitId) {
+            unitFormTitleEl.textContent = 'Edit Unit Pengukuran';
+            unitIdInput.value = unit.unitId;
+            unitNameInput.value = unit.namaUnit || '';
+            unitAbbreviationInput.value = unit.singkatanUnit || '';
+            submitUnitButton.innerHTML = '<i class="fas fa-save"></i> Perbarui';
+        }
+        window.showPage('unitFormPage', unit ? 'Edit Unit Pengukuran' : 'Tambah Unit Pengukuran');
+    }
+    
+    /**
+     * Mengisi dropdown referensi Unit Dasar di form.
+     * @param {string|null} selectedBaseUnitId - ID unit dasar yang akan dipilih.
+     */
+    function populateUnitBaseUnitRefDropdown(selectedBaseUnitId = null) {
+        if (!unitBaseUnitRefSelect) return;
+        unitBaseUnitRefSelect.innerHTML = '<option value="">Memuat...</option>';
+        google.script.run
+            .withSuccessHandler(response => {
+                if (response && response.success) {
+                    populateDropdown_(unitBaseUnitRefSelect.id, response.data, 'Pilih Unit Dasar Referensi', selectedBaseUnitId);
+                }
+            })
+            .getBaseUnits();
+    };
+
+    /**
+     * Mengambil data dari form Unit Pengukuran.
+     */
+    function getUnitFormData() {
+        const namaUnit = unitNameInput.value.trim();
+        const baseUnitIdRef = unitBaseUnitRefSelect.value;
+        if (!namaUnit) { window.showToast('Nama Unit wajib diisi.', 'error'); return null; }
+        if (!baseUnitIdRef) { window.showToast('Unit Dasar Referensi wajib dipilih.', 'error'); return null; }
+        return {
+            unitId: unitIdInput.value || null,
+            namaUnit: namaUnit,
+            singkatanUnit: unitAbbreviationInput.value.trim(),
+            baseUnitIdRef: baseUnitIdRef
+        };
+    }
+    
+    /**
+     * Mereset form Unit Pengukuran.
+     */
+    function resetUnitForm() {
+        if(unitForm) unitForm.reset();
+        if(unitIdInput) unitIdInput.value = '';
+        if(unitFormTitleEl) unitFormTitleEl.textContent = 'Tambah Unit Pengukuran Baru';
+        if(submitUnitButton) submitUnitButton.innerHTML = '<i class="fas fa-plus"></i> Simpan';
+    }
+
+    // --- 3. EVENT LISTENERS ---
+
+    if (unitForm) {
+        unitForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = getUnitFormData();
+            if (!formData) return;
+            const action = formData.unitId ? 'updateUnit' : 'addUnit';
+            window.showLoading(true, formData.unitId ? 'Memperbarui...' : 'Menyimpan...');
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response.success) {
+                        window.showToast(response.message, 'success');
+                        window.loadUnits();
+                        window.showPage('unitsPage', 'Unit Pengukuran');
+                    } else {
+                        window.showToast(response.message, 'error');
+                    }
+                })
+                .withFailureHandler(error => {
+                    window.showLoading(false);
+                    const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error memuat form unit: ' + errorMessage, 'error');
+                    console.error('Gagal memuat form unit:', error); // Ini membantu debugging
+                })
+                [action](formData);
+        });
+    }
+
+    // Listener klik utama untuk modul Units
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target.closest('#addUnitButton')) {
+                showUnitForm();
+            } else if (target.closest('#backToUnitListButton')) {
+                window.showPage('unitsPage', 'Unit Pengukuran');
+            } else if (target.closest('#resetUnitFormButton')) {
+                resetUnitForm();
+            } else if (target.closest('.edit-unit-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.unitId) {
+                    const unitToEdit = unitCache[row.dataset.unitId];
+                    if (unitToEdit) showUnitForm(unitToEdit);
+                }
+            } else if (target.closest('.delete-unit-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.unitId) {
+                    const unitToDelete = unitCache[row.dataset.unitId];
+                    if (unitToDelete) {
+                        handleItemAction({
+                            itemId: unitToDelete.unitId,
+                            itemName: unitToDelete.namaUnit,
+                            action: 'menghapus',
+                            serverFunctionName: 'deleteUnit',
+                            loadDataFunction: window.loadUnits
+                        });
+                    }
+                }
+            }
+        });
+    }
+} // --- Akhir dari initializeUnits ---
+</script>
