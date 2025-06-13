@@ -1,0 +1,723 @@
+<script>
+// Modul untuk fungsionalitas halaman Pembelian (dengan perbaikan)
+
+function initializePurchases() {
+    // --- 1. DEKLARASI ELEMEN DOM ---
+    const purchaseIdInput = document.getElementById('purchaseIdInput');
+    const mainContent = document.getElementById('mainContentArea');
+    const purchaseForm = document.getElementById('purchaseForm');
+    const productSearchInput = document.getElementById('purchaseProductSearch');
+    const purchaseItemsTableBody = document.querySelector('#purchaseItemsTable tbody');
+    
+    // Elemen input untuk total
+    const orderTaxInput = document.getElementById('purchaseOrderTax');
+    const discountInput = document.getElementById('purchaseDiscount');
+    const shippingInput = document.getElementById('purchaseShipping');
+
+    // Deklarasi elemen-elemen Modal
+    const editItemModal = document.getElementById('editItemModal');
+    const editItemModalTitle = document.getElementById('editItemModalTitle');
+    const editItemForm = document.getElementById('editItemForm');
+    const saveItemChangesButton = document.getElementById('saveItemChangesButton');
+    // (Input di dalam modal akan kita ambil nanti saat dibutuhkan)
+
+    // Variabel state
+    let purchaseDependencies = {};
+    let searchResultsContainer = null;
+    let currentRowBeingEdited = null; // Untuk menyimpan baris <tr> mana yang sedang diedit
+
+    /**
+     * FUNGSI loadPurchases DENGAN LOGIKA LENGKAP
+     * Memuat daftar pembelian dari server dan menampilkannya di tabel.
+     */
+    window.loadPurchases = function() {
+        const tableBody = document.querySelector("#purchasesTable tbody");
+        if (!tableBody) return;
+        
+        window.showLoading(true, 'Memuat daftar pembelian...');
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    renderPurchasesTable(response.data);
+                } else {
+                    window.showToast(response?.message || 'Gagal memuat daftar pembelian.', 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                window.showToast(error?.message || 'Error tidak diketahui.', 'error');
+            })
+            .getPurchases(); // Panggil fungsi backend yang baru
+    }
+
+    /**
+     * FUNGSI BARU UNTUK MERENDER TABEL DAFTAR PEMBELIAN
+     */
+    function renderPurchasesTable(purchases) {
+        const tableBody = document.querySelector("#purchasesTable tbody");
+        if (!tableBody) return;
+        tableBody.innerHTML = '';
+
+        if (!purchases || purchases.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Tidak ada data pembelian.</td></tr>';
+            return;
+        }
+
+        purchases.forEach(p => {
+            const row = tableBody.insertRow();
+            row.dataset.purchaseId = p.id; // Seharusnya p.id agar konsisten
+
+            // KOLOM REFERENSI
+            row.insertCell(0).innerHTML = `<span class="cell-badge badge-code">${p.referenceNo || 'N/A'}</span>`;
+            
+            row.insertCell(1).textContent = p.supplierName || 'N/A';
+            row.insertCell(2).textContent = p.warehouseName || 'N/A';
+            
+            // KOLOM STATUS
+            const statusCell = row.insertCell(3);
+            const statusText = p.status || 'N/A';
+            const statusBadgeClass = 'status-badge ' + statusText.toLowerCase().replace(/ /g, '-');
+            statusCell.innerHTML = `<span class="${statusBadgeClass}">${statusText}</span>`;
+
+            row.insertCell(4).textContent = `Rp ${(p.grandTotal || 0).toLocaleString('id-ID')}`;
+            
+            // KOLOM TIPE PEMBAYARAN
+            const paymentCell = row.insertCell(5);
+            const paymentText = p.paymentType || 'Lainnya';
+            const paymentBadgeClass = 'cell-badge badge-payment ' + paymentText.toLowerCase().replace(/ /g, '-');
+            paymentCell.innerHTML = `<span class="${paymentBadgeClass}">${paymentText}</span>`;
+
+            // KOLOM DIBUAT PADA
+            const createdAtText = p.createdAt ? new Date(p.createdAt).toLocaleDateString('id-ID') : 'N/A';
+            row.insertCell(6).innerHTML = `<span class="cell-badge badge-date">${createdAtText}</span>`;
+            
+            const actionsCell = row.insertCell(7);
+            actionsCell.innerHTML = `
+                <div class="action-menu-container">
+                    <button class="action-menu-trigger btn icon-button"><i class="fas fa-ellipsis-v"></i></button>
+                    <div class="action-menu-dropdown">
+                        <a href="#" class="view-purchase-btn">Lihat Pembelian</a>
+                        <a href="#" class="download-pdf-btn">Download PDF</a>
+                        <a href="#" class="edit-purchase-btn">Edit Pembelian</a>
+                        <a href="#" class="delete-purchase-btn">Hapus Pembelian</a>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    // --- 2. FUNGSI-FUNGSI ---
+
+    /**
+     * Mengumpulkan semua data dari form pembelian untuk dikirim ke server.
+     */
+    function getPurchaseFormData() {
+        // 1. Kumpulkan data dari bagian atas form
+        const purchaseData = {
+            warehouseId: document.getElementById('purchaseWarehouse').value,
+            supplierId: document.getElementById('purchaseSupplier').value,
+            referenceNo: document.getElementById('purchaseReferenceNo').value,
+            status: document.getElementById('purchaseStatus').value,
+            paymentType: document.getElementById('purchasePaymentType').value,
+            notes: document.getElementById('purchaseNote').value.trim(),
+            orderTax: parseFloat(document.getElementById('purchaseOrderTax').value) || 0,
+            orderDiscount: parseFloat(document.getElementById('purchaseDiscount').value) || 0,
+            shipping: parseFloat(document.getElementById('purchaseShipping').value) || 0,
+            items: [] // Siapkan array kosong untuk item
+        };
+
+        // Validasi data utama
+        if (!purchaseData.warehouseId || !purchaseData.supplierId) {
+            window.showToast('Gudang dan Pemasok wajib dipilih.', 'error');
+            return null;
+        }
+
+        // 2. Kumpulkan data dari setiap baris di tabel rincian pesanan
+        const itemRows = purchaseItemsTableBody.querySelectorAll('.purchase-item-row');
+        if (itemRows.length === 0) {
+            window.showToast('Rincian pesanan tidak boleh kosong. Silakan tambahkan minimal satu produk.', 'error');
+            return null;
+        }
+
+        itemRows.forEach(row => {
+            const costText = row.querySelector('.item-net-cost').textContent;
+
+            const item = {
+                productId: row.dataset.productId,
+                quantity: parseFloat(row.querySelector('.item-quantity').value) || 0,
+                costPrice: parseFloat(costText.replace(/[^0-9,-]+/g,"").replace(",", ".")) || 0
+                // Properti lain seperti diskon per item atau pajak per item bisa ditambahkan di sini jika perlu
+            };
+
+            // Validasi setiap item
+            if (item.quantity <= 0) {
+                // Lewati item dengan kuantitas tidak valid, atau tampilkan error
+                console.warn(`Item dengan ID ${item.productId} memiliki kuantitas tidak valid dan dilewati.`);
+                return; // 'return' di dalam forEach berfungsi seperti 'continue'
+            }
+            purchaseData.items.push(item);
+        });
+
+        // Jika setelah divalidasi tidak ada item yang valid
+        if (purchaseData.items.length === 0) {
+            window.showToast('Semua item memiliki kuantitas tidak valid.', 'error');
+            return null;
+        }
+
+        console.log("Data yang akan dikirim ke server:", purchaseData);
+        return purchaseData;
+    }
+
+    function resetPurchaseForm() {
+        if (purchaseForm) purchaseForm.reset(); // Mereset semua input, select, textarea
+
+        // Kosongkan tabel item dan kembalikan placeholder
+        if (purchaseItemsTableBody) {
+            const noItemsRowHTML = `<tr id="noItemsRow"><td colspan="8" style="text-align:center; padding: 20px;">Belum ada item yang ditambahkan.</td></tr>`;
+            purchaseItemsTableBody.innerHTML = noItemsRowHTML;
+        }
+
+        // Reset tanggal ke hari ini
+        const purchaseDateInput = document.getElementById('purchaseDate');
+        if (purchaseDateInput) {
+            const today = new Date();
+            today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+            purchaseDateInput.valueAsDate = today;
+        }
+
+        // Hitung ulang Grand Total (akan meresetnya menjadi 0)
+        updateGrandTotals();
+        console.log("Form pembelian berhasil di-reset.");
+    }
+
+    function showPurchaseForm() {
+        resetPurchaseForm();
+        window.showLoading(true, 'Mempersiapkan form pembelian...');
+        
+        google.script.run
+            .withSuccessHandler(response => {
+                // Hentikan loading SETELAH server merespons
+                window.showLoading(false);
+
+                // Semua logika yang menggunakan 'response' HARUS berada di dalam sini
+                if (response && response.success) {
+                    purchaseDependencies = response.data;
+                    console.log("Data dependensi diterima:", purchaseDependencies);
+
+                    window.populateDropdown_('purchaseWarehouse', purchaseDependencies.warehouses, 'Pilih Gudang');
+                    window.populateDropdown_('purchaseSupplier', purchaseDependencies.suppliers, 'Pilih Pemasok');
+
+                    const purchaseDateInput = document.getElementById('purchaseDate');
+                    if (purchaseDateInput) {
+                        const today = new Date();
+                        today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+                        purchaseDateInput.valueAsDate = today;
+
+                        const maxDate = today.toISOString().split('T')[0]; // Format menjadi YYYY-MM-DD
+                        purchaseDateInput.setAttribute('max', maxDate);
+                    }
+                    
+                    window.showPage('purchaseFormPage', 'Pembelian', 'Tambah Pembelian Baru');
+
+                } else {
+                    window.showToast(response?.message || 'Gagal memuat data pendukung.', 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                // Hentikan juga loading jika panggilan ke server gagal total
+                window.showLoading(false);
+                const errorMessage = error?.message || 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error memuat form pembelian: ' + errorMessage, 'error');
+            })
+            .getProductFormDependencies();
+    }
+
+    function renderSearchResults(filteredProducts) {
+        if (!searchResultsContainer) return;
+        
+        searchResultsContainer.innerHTML = '';
+        if (!filteredProducts || filteredProducts.length === 0) {
+            searchResultsContainer.style.display = 'none';
+            return;
+        }
+
+        filteredProducts.forEach(product => {
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'search-result-item';
+            itemDiv.innerHTML = `
+                <div class="product-name">${product.name || 'Nama Tidak Tersedia'}</div>
+                <div class="product-code-stock">
+                    <span>Kode: ${product.code || 'N/A'}</span> | <span>Stok: ${product.stock || 0}</span>
+                </div>
+            `;
+            itemDiv.dataset.productObject = JSON.stringify(product);
+            searchResultsContainer.appendChild(itemDiv);
+        });
+
+        const inputContainer = productSearchInput.parentElement;
+        searchResultsContainer.style.left = inputContainer.offsetLeft + 'px';
+        searchResultsContainer.style.width = inputContainer.offsetWidth + 'px';
+        searchResultsContainer.style.display = 'block';
+    }
+    
+ /**
+     * Menambahkan produk yang dipilih ke tabel Rincian Pesanan.
+     * (Versi Baru dengan pembuatan baris tabel)
+     * @param {Object} product - Objek produk yang dipilih dari pencarian.
+     */
+    function addProductToOrderTable(product) {
+        const tableBody = document.querySelector('#purchaseItemsTable tbody');
+        const existingRow = tableBody.querySelector(`tr[data-product-id="${product.id}"]`);
+        if (existingRow) {
+            window.showToast('Barang ini sudah ditambahkan.', 'warning');
+            return;
+        }
+        const noItemsRow = document.getElementById('noItemsRow');
+        if (noItemsRow) noItemsRow.remove();
+
+        const newRow = tableBody.insertRow();
+        newRow.classList.add('purchase-item-row');
+        // Simpan semua data awal di baris sebagai 'sumber kebenaran'
+        newRow.dataset.productId = product.id;
+        newRow.dataset.cost = product.cost || 0;
+        newRow.dataset.taxType = product.taxType || 'Ekslusif';
+        newRow.dataset.taxValue = product.taxValue || 0;
+        newRow.dataset.discountType = 'Fixed';
+        newRow.dataset.discountValue = 0; // Default
+        newRow.dataset.purchaseUnit = product.unitPembelianId || '';
+
+        // Tampilkan data awal ke dalam sel
+        const cost = parseFloat(newRow.dataset.cost);
+        newRow.innerHTML = `
+            <td>
+                <div class="item-product-code">${product.code}</div>
+                <div class="item-name-wrapper">
+                    <span class="item-product-name">${product.name}</span>
+                    <button type="button" class="edit-item-button btn icon-button" title="Edit Item"><i class="fas fa-pencil-alt"></i></button>
+                </div>
+            </td>
+            <td><span class="item-net-cost">Rp ${cost.toLocaleString('id-ID')}</span></td>
+            <td><span class="item-stock">${product.stock || 0}</span></td>
+            <td><div class="qty-stepper"><button type="button" class="qty-btn qty-minus" aria-label="Kurangi Kuantitas">-</button><input type="number" class="item-quantity qty-input" value="1" min="1" step="any"><button type="button" class="qty-btn qty-plus" aria-label="Tambah Kuantitas">+</button></div></td>
+            <td><span class="item-discount">Rp 0</span></td>
+            <td><span class="item-tax">Rp 0</span></td>
+            <td><span class="item-subtotal">Rp ${cost.toLocaleString('id-ID')}</span></td>
+            <td><button type="button" class="delete-item-button btn icon-button" title="Hapus Item"><i class="fas fa-trash"></i></button></td>
+        `;
+        
+        calculateRowSubtotal(newRow);
+
+        productSearchInput.value = '';
+        if (searchResultsContainer) searchResultsContainer.style.display = 'none';
+        updateGrandTotals();
+    }
+
+    // FUNGSI KALKULASI BARIS
+    function calculateRowSubtotal(tableRow) {
+        // 1. Ambil semua data dasar dari baris
+        const baseCost = parseFloat(tableRow.dataset.cost) || 0;
+        const taxType = tableRow.dataset.taxType || 'Eksklusif';
+        const taxPercentage = parseFloat(tableRow.dataset.taxValue) || 0;
+        const discountType = tableRow.dataset.discountType || 'Fixed';
+        const discountValue = parseFloat(tableRow.dataset.discountValue) || 0;
+        const quantity = parseFloat(tableRow.querySelector('.item-quantity').value) || 0;
+
+        // 2. Hitung nilai diskon per unit
+        let discountAmountPerUnit = 0;
+        if (discountType === 'Fixed') {
+            discountAmountPerUnit = discountValue;
+        } else { // Percentage
+            discountAmountPerUnit = (discountValue / 100) * baseCost;
+        }
+
+        // 3. Hitung Dasar Pengenaan Pajak per unit
+        const taxBasePerUnit = baseCost - discountAmountPerUnit;
+        
+        // 4. Hitung Nilai Pajak per Unit dan Harga Pokok Bersih final
+        let taxAmountPerUnit = 0;
+        let finalNetUnitCost = 0;
+
+        if (taxType === 'Eksklusif') {
+            taxAmountPerUnit = (taxPercentage / 100) * taxBasePerUnit;
+            // Harga Pokok Bersih = Harga setelah diskon. Pajak ditambahkan nanti di Subtotal.
+            finalNetUnitCost = taxBasePerUnit;
+        } else { // Inklusif
+            // Harga Pokok Bersih = Harga setelah diskon LALU "dikeluarkan" pajaknya.
+            finalNetUnitCost = taxBasePerUnit / (1 + (taxPercentage / 100));
+            taxAmountPerUnit = taxBasePerUnit - finalNetUnitCost;
+        }
+
+        // 5. Hitung nilai total untuk kolom-kolom tabel
+        const totalDiscountDisplay = discountAmountPerUnit * quantity;
+        const totalTaxDisplay = taxAmountPerUnit * quantity;
+        
+        let subtotal;
+        if (taxType === 'Eksklusif') {
+            // Subtotal = (Harga setelah diskon + Pajak) * Qty
+            subtotal = (taxBasePerUnit + taxAmountPerUnit) * quantity;
+        } else { // Inklusif
+            // Subtotal = Harga setelah diskon (karena pajak sudah termasuk) * Qty
+            subtotal = taxBasePerUnit * quantity;
+        }
+
+        // 6. Perbarui semua sel di dalam tabel dengan nilai yang sudah diformat
+        tableRow.querySelector('.item-net-cost').textContent = `Rp ${finalNetUnitCost.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        tableRow.querySelector('.item-discount').textContent = `Rp ${totalDiscountDisplay.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        tableRow.querySelector('.item-tax').textContent = `Rp ${totalTaxDisplay.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        tableRow.querySelector('.item-subtotal').textContent = `Rp ${subtotal.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        // Panggil update grand total untuk memperbarui ringkasan di bawah
+        updateGrandTotals();
+    }
+
+    // FUNGSI KALKULASI TOTAL
+    function updateGrandTotals() {
+        const allItemRows = purchaseItemsTableBody.querySelectorAll('.purchase-item-row');
+        let totalOfAllSubtotals = 0;
+
+        allItemRows.forEach(row => {
+            const subtotalElement = row.querySelector('.item-subtotal');
+            if (subtotalElement) {
+                const subtotalValue = parseFloat(subtotalElement.textContent.replace(/[^0-9,-]+/g,"").replace(",", ".")) || 0;
+                totalOfAllSubtotals += subtotalValue;
+            }
+        });
+
+        const discount = parseFloat(discountInput.value) || 0;
+        const shipping = parseFloat(shippingInput.value) || 0;
+        const taxPercentage = parseFloat(orderTaxInput.value) || 0;
+
+        // POIN 4: Terapkan logika kalkulasi baru
+        const dpp = totalOfAllSubtotals - discount;
+        const taxValue = (taxPercentage / 100) * dpp;
+        const grandTotal = dpp + taxValue + shipping;
+
+        // POIN 3: Perbarui tampilan pajak dengan format baru
+        document.getElementById('summaryOrderTax').textContent = `Rp ${taxValue.toLocaleString('id-ID')} (${taxPercentage}%)`;
+        document.getElementById('summaryDiscount').textContent = `Rp ${discount.toLocaleString('id-ID')}`;
+        document.getElementById('summaryShipping').textContent = `Rp ${shipping.toLocaleString('id-ID')}`;
+        document.getElementById('summaryGrandTotal').textContent = `Rp ${grandTotal.toLocaleString('id-ID')}`;
+    }
+
+
+    // --- 3. EVENT LISTENERS ---
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            
+            if (target.closest('#addPurchaseButton')) {
+                showPurchaseForm();
+            } else if (target.closest('#backToPurchaseListButton')) {
+                window.showPage('purchasesPage', 'Pembelian');
+            } else if (target.closest('#resetPurchaseFormButton')) {
+            resetPurchaseForm();
+            } else {            
+                  const searchResult = event.target.closest('.search-result-item');
+                  if (searchResult?.dataset.productObject) {
+                      const product = JSON.parse(searchResult.dataset.productObject);
+                      addProductToOrderTable(product);
+                  }
+              }
+        });
+    }
+    
+    if (productSearchInput) {
+        productSearchInput.closest('.form-group').style.position = 'relative';
+        if (!searchResultsContainer) {
+            searchResultsContainer = document.createElement('div');
+            searchResultsContainer.className = 'search-results-container';
+            productSearchInput.closest('.form-group').appendChild(searchResultsContainer);
+        }
+        productSearchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase().trim();
+            if (searchTerm.length < 2) {
+                searchResultsContainer.style.display = 'none';
+                return;
+            }
+            const productsToSearch = purchaseDependencies.products || [];
+            if (productsToSearch.length > 0) {
+                const filtered = productsToSearch.filter(p => (p.name?.toLowerCase().includes(searchTerm)) || (p.code?.toLowerCase().includes(searchTerm)));
+                renderSearchResults(filtered);
+            }
+        });
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.form-group') && searchResultsContainer) {
+                searchResultsContainer.style.display = 'none';
+            }
+        });
+    }
+
+    if (purchaseForm) {
+        purchaseForm.addEventListener('submit', function(event) {
+            event.preventDefault(); // Selalu cegah aksi default form
+
+            // Panggil fungsi untuk mengumpulkan data
+            const formData = getPurchaseFormData();
+
+            // Jika data tidak valid (null), hentikan proses
+            if (!formData) return; 
+
+            window.showLoading(true, 'Menyimpan pembelian...');
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response && response.success) {
+                        window.showToast(response.message, 'success');
+                        // Kembali ke halaman daftar dan muat ulang datanya
+                        window.showPage('purchasesPage', 'Pembelian');
+                        window.loadPurchases(); 
+                    } else {
+                        window.showToast(response?.message || 'Gagal menyimpan pembelian.', 'error');
+                    }
+                })
+                .withFailureHandler(error => {
+                    window.showLoading(false);
+                    const errorMessage = error?.message || 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error: ' + errorMessage, 'error');
+                })
+                .addPurchase(formData); // Kirim data ke backend
+        });
+    }
+
+    // Gunakan event delegation pada table body untuk efisiensi
+    if (purchaseItemsTableBody) {
+        // SATU LISTENER UNTUK SEMUA EVENT 'CLICK' DI DALAM TABLE BODY
+        purchaseItemsTableBody.addEventListener('click', function(event) {
+            const button = event.target.closest('button');
+            if (!button) return; // Keluar jika yang diklik bukan tombol atau ikon di dalamnya
+            const row = button.closest('.purchase-item-row');
+
+            // Logika untuk tombol Hapus
+            if (button.classList.contains('delete-item-button')) {
+                const row = button.closest('.purchase-item-row');
+                if (row) {
+                    // Minta konfirmasi kepada pengguna sebelum menghapus
+                    if (confirm('Apakah Anda yakin ingin menghapus item ini?')) {
+                        row.remove(); // Hapus baris dari tabel
+                        updateGrandTotals(); // Hitung ulang total keseluruhan
+
+                        // Cek jika tabel menjadi kosong, tampilkan lagi pesan placeholder
+                        const remainingRows = purchaseItemsTableBody.querySelectorAll('.purchase-item-row');
+                        if (remainingRows.length === 0) {
+                            const noItemsRowHTML = `<tr id="noItemsRow"><td colspan="8" style="text-align:center; padding: 20px;">Belum ada item yang ditambahkan.</td></tr>`;
+                            purchaseItemsTableBody.innerHTML = noItemsRowHTML;
+                        }
+                    }
+                }
+            }
+
+            // Logika untuk tombol Edit (pensil)
+            if (button.classList.contains('edit-item-button')) {
+                if (!row) return;
+                currentRowBeingEdited = row;
+
+                const productId = row.dataset.productId;
+                const productMasterData = purchaseDependencies.products.find(p => p.id === productId);
+                
+                // POIN 1: Isi modal dengan data dari master produk atau data yang sudah di-edit
+                const currentData = {
+                    cost: row.dataset.cost,
+                    taxType: row.dataset.taxType,
+                    taxValue: row.dataset.taxValue,
+                    discountType: row.dataset.discountType,
+                    discountValue: row.dataset.discountValue,
+                    purchaseUnit: row.dataset.purchaseUnit,
+                    name: row.querySelector('.item-product-name')?.textContent || ''
+                };
+
+                editItemModalTitle.textContent = currentData.name;
+                document.getElementById('modalProductCost').value = currentData.cost;
+                document.getElementById('modalTaxType').value = currentData.taxType;
+                document.getElementById('modalOrderTax').value = currentData.taxValue;
+                document.getElementById('modalDiscountType').value = currentData.discountType;
+                document.getElementById('modalDiscount').value = currentData.discountValue;
+
+                // Isi dropdown unit
+                if (productMasterData) {
+                    const productBaseUnitId = productMasterData.unitProdukId;
+                    const filteredUnits = purchaseDependencies.units.filter(u => u.ref === productBaseUnitId);
+                    window.populateDropdown_('modalPurchaseUnit', filteredUnits, 'Pilih Unit', currentData.purchaseUnit);
+                }
+                editItemModal.style.display = 'flex';
+                setTimeout(() => editItemModal.classList.add('active'), 10);
+            }
+
+            // Logika untuk tombol QTY Plus/Minus
+            else if (button.classList.contains('qty-btn')) {
+                const stepperDiv = button.closest('.qty-stepper');
+                if (!stepperDiv) return;
+
+                const quantityInput = stepperDiv.querySelector('.item-quantity');
+                let currentValue = parseInt(quantityInput.value) || 1;
+
+                if (button.classList.contains('qty-plus')) {
+                    currentValue++;
+                } else if (button.classList.contains('qty-minus')) {
+                    if (currentValue > 1) currentValue--;
+                }
+                
+                quantityInput.value = currentValue;
+                
+                // Picu event 'input' secara manual agar kalkulasi berjalan
+                quantityInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+
+        // SATU LISTENER UNTUK SEMUA EVENT 'INPUT' DI DALAM TABLE BODY
+        purchaseItemsTableBody.addEventListener('input', function(event) {
+            if (event.target?.classList.contains('item-quantity')) {
+                const tableRow = event.target.closest('tr');
+                if (tableRow) calculateRowSubtotal(tableRow);
+            }
+        });
+    }
+
+    // BAGIAN BARU: Event listener untuk menutup modal
+    if (editItemModal) {
+        editItemModal.addEventListener('click', function(event) {
+            const target = event.target;
+            // Tutup modal
+            if (target.classList.contains('modal-overlay') || target.closest('.modal-close-button') || target.closest('.modal-cancel-button')) {
+                editItemModal.classList.remove('active');
+                setTimeout(() => editItemModal.style.display = 'none', 300);
+                currentRowBeingEdited = null;
+            }
+
+            // --- LOGIKA BARU UNTUK TOMBOL SIMPAN ---
+            if (target.id === 'saveItemChangesButton') {
+                if (!currentRowBeingEdited) return;
+
+                // 1. Ambil data baru dari modal
+                currentRowBeingEdited.dataset.cost = document.getElementById('modalProductCost').value;
+                currentRowBeingEdited.dataset.taxType = document.getElementById('modalTaxType').value;
+                currentRowBeingEdited.dataset.taxValue = document.getElementById('modalOrderTax').value;
+                currentRowBeingEdited.dataset.discountType = document.getElementById('modalDiscountType').value;
+                currentRowBeingEdited.dataset.discountValue = document.getElementById('modalDiscount').value;
+                currentRowBeingEdited.dataset.purchaseUnit = document.getElementById('modalPurchaseUnit').value;
+
+                // 2. Panggil ulang kalkulasi untuk baris ini dengan data baru
+                calculateRowSubtotal(currentRowBeingEdited);
+
+                // 3. Tutup modal
+                editItemModal.dispatchEvent(new Event('click'));
+            }
+        });
+    }
+
+    const purchasesTableBody = document.querySelector("#purchasesTable tbody");
+    if (purchasesTableBody) {
+        purchasesTableBody.addEventListener('click', function(event) {
+            event.preventDefault(); // Mencegah aksi default link
+            const target = event.target;
+            const actionTrigger = target.closest('.action-menu-trigger');
+            
+            // Logika untuk menampilkan/menyembunyikan menu titik tiga
+            if (actionTrigger) {
+                const dropdown = actionTrigger.nextElementSibling;
+                document.querySelectorAll('.action-menu-dropdown.active').forEach(d => {
+                    if (d !== dropdown) d.classList.remove('active');
+                });
+                dropdown.classList.toggle('active');
+                return;
+            }
+
+            // --- LOGIKA BARU UNTUK TOMBOL EDIT ---
+            const editButton = target.closest('.edit-purchase-btn');
+            if (editButton) {
+                const row = target.closest('tr');
+                const purchaseId = row?.dataset.purchaseId;
+                if (!purchaseId) return;
+
+                window.showLoading(true, 'Memuat data pembelian...');
+                google.script.run
+                    .withSuccessHandler(response => {
+                        window.showLoading(false);
+                        if (response && response.success) {
+                            // Data diterima, sekarang isi form
+                            const purchaseData = response.data.purchase;
+                            const dependencies = response.data.dependencies;
+                            // 1. Simpan dependensi untuk digunakan nanti
+                            purchaseDependencies = dependencies;
+
+                            // 2. Isi semua pilihan dropdown
+                            window.populateDropdown_('purchaseWarehouse', dependencies.warehouses, 'Pilih Gudang');
+                            window.populateDropdown_('purchaseSupplier', dependencies.suppliers, 'Pilih Pemasok');
+                            
+                            // 3. Isi form utama
+                            document.getElementById('purchaseWarehouse').value = purchaseData.warehouseId;
+                            document.getElementById('purchaseSupplier').value = purchaseData.supplierId;
+                            document.getElementById('purchaseReferenceNo').value = purchaseData.referenceNo || '';
+                            document.getElementById('purchaseStatus').value = purchaseData.status;
+                            document.getElementById('purchasePaymentType').value = purchaseData.paymentType;
+                            document.getElementById('purchaseNote').value = purchaseData.notes || '';
+                            document.getElementById('purchaseOrderTax').value = purchaseData.orderTax || 0;
+                            document.getElementById('purchaseDiscount').value = purchaseData.discount || 0;
+                            document.getElementById('purchaseShipping').value = purchaseData.shipping || 0;
+                            document.getElementById('purchaseDate').value = new Date(purchaseData.createdAt).toISOString().split('T')[0];
+
+                            // 4. Hapus item lama dan isi tabel rincian pesanan dengan item dari data
+                            const itemsTableBody = document.querySelector('#purchaseItemsTable tbody');
+                            itemsTableBody.innerHTML = ''; // Kosongkan tabel
+                            purchaseData.items.forEach(item => {
+                                // Gunakan kembali fungsi addProductToOrderTable, namun dengan data yang lebih lengkap
+                                addProductToOrderTable(item);
+                                // Sesuaikan Qty jika perlu (saat ini akan default 1)
+                                const addedRow = itemsTableBody.querySelector(`tr[data-product-id="${item.productId}"]`);
+                                if (addedRow) {
+                                    addedRow.querySelector('.item-quantity').value = item.quantity;
+                                    calculateRowSubtotal(addedRow); // Hitung ulang subtotalnya
+                                }
+                            });
+
+                            // 5. Tampilkan halaman form dalam mode edit
+                            // TODO: Nanti kita perlu menambahkan ID Pembelian ke form
+                            // dan mengubah tombol "Simpan" menjadi "Perbarui"
+                            window.showPage('purchaseFormPage', 'Pembelian', 'Edit Pembelian');
+                        } else {
+                            window.showToast(response?.message || 'Gagal mengambil data.', 'error');
+                        }
+                    })
+                    .withFailureHandler(error => {
+                        window.showLoading(false);
+                        window.showToast(error?.message || 'Error.', 'error');
+                    })
+                    .getPurchaseById(purchaseId);
+            }
+
+            // Logika untuk tombol hapus di dalam dropdown
+            const deleteButton = target.closest('.delete-purchase-btn');
+            if (deleteButton) {
+                const row = target.closest('tr');
+                if (!row || !row.dataset.purchaseId) return;
+
+                const purchaseId = row.dataset.purchaseId;
+                const referenceNo = row.cells[0].textContent; // Ambil No. Referensi dari sel pertama
+
+                // Gunakan helper global yang sudah ada
+                handleItemAction({
+                    itemId: purchaseId,
+                    itemName: `pembelian dengan No. Ref "${referenceNo}"`,
+                    action: 'menghapus',
+                    serverFunctionName: 'deletePurchase',
+                    loadDataFunction: window.loadPurchases
+                });
+            }
+
+            // Jika mengklik di luar area menu, tutup semua menu
+            if (!target.closest('.action-menu-container')) {
+                document.querySelectorAll('.action-menu-dropdown.active').forEach(d => {
+                    d.classList.remove('active');
+                });
+            }
+        });
+    }
+
+    // --- TAMBAHAN EVENT LISTENERS UNTUK INPUT TOTAL ---
+    if(orderTaxInput) orderTaxInput.addEventListener('input', updateGrandTotals);
+    if(discountInput) discountInput.addEventListener('input', updateGrandTotals);
+    if(shippingInput) shippingInput.addEventListener('input', updateGrandTotals);
+
+    console.log("LOG_INFO_CLIENT: Modul Pembelian (initializePurchases) berhasil dimuat.");
+}
+</script>
