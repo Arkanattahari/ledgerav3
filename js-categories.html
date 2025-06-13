@@ -1,0 +1,188 @@
+<script>
+
+function initializeCategories() {
+    // --- 1. DEKLARASI ELEMEN & VARIABEL ---
+    const mainContent = document.getElementById('mainContentArea');
+    const categoryForm = document.getElementById('categoryForm');
+    const categoriesTableBody = document.querySelector('#categoriesTable tbody');
+    
+    // Elemen Form
+    const categoryIdInput = document.getElementById('categoryIdInput'); 
+    const categoryNameInput = document.getElementById('categoryNameInput');
+    const categoryFormTitleEl = document.getElementById('categoryFormTitle');
+    const submitCategoryButton = document.getElementById('submitCategoryButton');
+
+    // Variabel untuk menyimpan data
+    let categoryCache = {};
+
+    // --- 1. FUNGSI LOAD CATEGORIES ---
+    // Memuat dan menampilkan kategori dari server
+    window.loadCategories = function() {
+        if (!categoriesTableBody) return;
+        
+        window.showLoading(true, 'Memuat daftar kategori...');
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    categoryCache = {}; // Reset cache
+                    const categories = response.data || [];
+                    
+                    categories.forEach(cat => {
+                        if (cat && cat.categoryId) {
+                            categoryCache[cat.categoryId] = cat;
+                        }
+                    });
+                    renderCategoriesTable(categories);
+                } else {
+                    window.showToast(response ? response.message : 'Gagal memuat daftar kategori.', 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error memuat kategori: ' + errorMessage, 'error');
+                console.error('Gagal memuat kategori:', error); // Ini membantu debugging
+            })
+            .getCategories();
+    };
+
+    // Merender data kategori ke dalam tabel HTML
+    function renderCategoriesTable(categories) {
+        if (!categoriesTableBody) return;
+        categoriesTableBody.innerHTML = '';
+        if (categories.length === 0) {
+            categoriesTableBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Tidak ada kategori. Silakan tambahkan baru.</td></tr>';
+            return;
+        }
+        categories.forEach(category => {
+            const row = categoriesTableBody.insertRow();
+            row.dataset.categoryId = category.id; // <-- BARU
+            row.insertCell(0).textContent = category.name || 'N/A'; // <-- BARU
+            row.insertCell(1).textContent = category.jumlahProduk !== undefined ? category.jumlahProduk : 0;
+            const actionsCell = row.insertCell(2);
+            actionsCell.classList.add('action-buttons');
+            actionsCell.innerHTML = createActionButtonsHTML('category', { edit: true, delete: true });
+        });
+    }
+
+    // --- 2. FUNGSI-FUNGSI PEMBANTU LOKAL ---
+    // Menampilkan halaman form untuk menambah atau mengedit
+    function showCategoryForm(category = null) {
+        resetCategoryForm(); // Selalu reset form sebelum ditampilkan
+        
+        if (category && category.id) { // Mode Edit <-- BARU
+            categoryFormTitleEl.textContent = 'Edit Kategori';
+            categoryIdInput.value = category.id; // <-- BARU
+            categoryNameInput.value = category.name || ''; // <-- BARU
+            submitCategoryButton.innerHTML = '<i class="fas fa-save"></i> Perbarui Kategori';
+        }
+        
+        window.showPage('categoryFormPage', category ? 'Edit Kategori' : 'Tambah Kategori Baru');
+    }
+
+    // Mengambil data dari input form
+    function getCategoryFormData() {
+        const categoryId = categoryIdInput.value || null;
+        const namaKategori = categoryNameInput.value.trim();
+        
+        if (!namaKategori) {
+            window.showToast('Nama Kategori wajib diisi.', 'error');
+            return null;
+        }
+        return { categoryId, namaKategori };
+    }
+
+    // Mereset tampilan form
+    function resetCategoryForm() {
+        if(categoryForm) categoryForm.reset();
+        categoryIdInput.value = '';
+        categoryFormTitleEl.textContent = 'Tambah Kategori Baru';
+        submitCategoryButton.innerHTML = '<i class="fas fa-plus"></i> Simpan Kategori';
+    }
+
+
+    // --- 3. EVENT LISTENERS ---
+
+    // Listener khusus untuk event 'submit' pada form
+    if (categoryForm) {
+        categoryForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = getCategoryFormData();
+            if (!formData) return;
+
+            const isEdit = !!formData.categoryId;
+            const action = isEdit ? 'updateCategory' : 'addCategory';
+            
+            window.showLoading(true, isEdit ? 'Memperbarui...' : 'Menambahkan...');
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response && response.success) {
+                        window.showToast(response.message, 'success');
+                        window.loadCategories(); // Muat ulang data setelah sukses
+                        window.showPage('categoriesPage', 'Manajemen Kategori Produk');
+                    } else {
+                        window.showToast(response.message || 'Operasi gagal.', 'error');
+                    }
+                })
+                 (error => {
+                    window.showLoading(false);
+                    const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error memuat form kategori: ' + errorMessage, 'error');
+                    console.error('Gagal memuat form kategori:', error); // Ini membantu debugging
+                })
+                [action](formData);
+        });
+    }
+
+    // Listener utama untuk semua aksi KLIK di dalam area konten utama
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            
+            // Aksi untuk tombol "Tambah Kategori Baru"
+            if (target.closest('#addCategoryButton')) {
+                showCategoryForm();
+            }
+            
+            // Aksi untuk tombol "Kembali ke Daftar Kategori"
+            else if (target.closest('#backToCategoryListButton')) {
+                window.showPage('categoriesPage', 'Manajemen Kategori Produk');
+            }
+            
+            // Aksi untuk tombol "Reset Form"
+            else if (target.closest('#resetCategoryFormButton')) {
+                resetCategoryForm();
+            }
+
+            // Aksi untuk tombol "Edit" di dalam tabel
+            else if (target.closest('.edit-category-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.categoryId) {
+                    const categoryToEdit = categoryCache[row.dataset.categoryId];
+                    if (categoryToEdit) showCategoryForm(categoryToEdit);
+                }
+            }
+
+            // Aksi untuk tombol "Hapus" di dalam tabel
+            else if (target.closest('.delete-category-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.categoryId) {
+                    const categoryToDelete = categoryCache[row.dataset.categoryId];
+                    if (categoryToDelete) {
+                        // Menggunakan helper global dari js-shared.html
+                        handleItemAction({
+                            itemId: categoryToDelete.categoryId,
+                            itemName: categoryToDelete.namaKategori,
+                            action: 'menghapus',
+                            serverFunctionName: 'deleteCategory',
+                            loadDataFunction: window.loadCategories
+                        });
+                    }
+                }
+            }
+        });
+    }
+}
+</script>
