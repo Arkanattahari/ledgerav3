@@ -1,0 +1,185 @@
+<script>
+// Modul untuk fungsionalitas halaman Manajemen Gudang (Versi Final Refactor)
+
+function initializeWarehouses() {
+    // --- 1. DEKLARASI ELEMEN & VARIABEL ---
+    const mainContent = document.getElementById('mainContentArea');
+    const warehouseForm = document.getElementById('warehouseForm');
+    const warehousesTableBody = document.querySelector('#warehousesTable tbody');
+    const warehouseSearchInput = document.getElementById('warehouseSearchInput');
+
+    // Elemen Form
+    const warehouseIdInput = document.getElementById('warehouseIdInput');
+    const warehouseNameInput = document.getElementById('warehouseNameInput');
+    const warehouseEmailInput = document.getElementById('warehouseEmailInput');
+    const warehousePhoneInput = document.getElementById('warehousePhoneInput');
+    const warehouseCityInput = document.getElementById('warehouseCityInput');
+    const warehouseZipInput = document.getElementById('warehouseZipInput');
+    const warehouseFormTitleEl = document.getElementById('warehouseFormTitle');
+    const submitWarehouseButton = document.getElementById('submitWarehouseButton');
+
+    // State
+    let warehouseCache = {};
+
+    // --- 1. FUNGSI LOAD WAREHOUSE ---
+    window.loadWarehouses = function() {
+        if (!warehousesTableBody) return;
+        const searchTerm = warehouseSearchInput ? warehouseSearchInput.value.trim() : "";
+        window.showLoading(true, 'Memuat daftar gudang...');
+        google.script.run
+            .withSuccessHandler(response => {
+                window.showLoading(false);
+                if (response && response.success) {
+                    warehouseCache = {};
+                    const warehouses = response.data || [];
+                    warehouses.forEach(wh => {
+                        if (wh && wh.id) warehouseCache[wh.id] = wh;
+                    });
+                    renderWarehousesTable(warehouses);
+                } else {
+                    const failMsg = response && response.message ? response.message : 'Gagal memuat data Gudang.';
+                    window.showToast(failMsg, 'error');
+                }
+            })
+            .withFailureHandler(error => {
+                window.showLoading(false);
+                const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                window.showToast('Error: ' + errorMessage, 'error');
+                console.error('Gagal memuat data gudang:', error);
+            })
+            .getWarehouses({ searchTerm });
+    };
+
+    function renderWarehousesTable(warehouses) {
+        if (!warehousesTableBody) return;
+        warehousesTableBody.innerHTML = '';
+        if (warehouses.length === 0) {
+            warehousesTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Tidak ada Gudang terdaftar.</td></tr>`;
+            return;
+        }
+        warehouses.forEach(wh => {
+            const row = warehousesTableBody.insertRow();
+            row.dataset.warehouseId = wh.id;
+            row.insertCell(0).textContent = wh.name || 'N/A';
+            row.insertCell(1).textContent = wh.nomorTelepon || 'N/A';
+            row.insertCell(2).textContent = wh.kotaKabupaten || 'N/A';
+            row.insertCell(3).textContent = wh.kodePos || 'N/A';
+            row.insertCell(4).textContent = wh.dibuatPada ? new Date(wh.dibuatPada).toLocaleDateString('id-ID') : 'N/A';
+            const actionsCell = row.insertCell(5);
+            actionsCell.classList.add('action-buttons');
+            actionsCell.style.textAlign = 'right';
+            actionsCell.innerHTML = createActionButtonsHTML('warehouse', { view: false, edit: true, delete: true });
+        });
+    }
+
+    // --- 2. FUNGSI-FUNGSI LOKAL ---
+    function showWarehouseForm(warehouse = null) {
+        resetWarehouseForm();
+        if (warehouse && warehouse.id) {
+            warehouseFormTitleEl.textContent = 'Edit Gudang';
+            warehouseIdInput.value = warehouse.id;
+            warehouseNameInput.value = warehouse.name || '';
+            warehouseEmailInput.value = warehouse.emailGudang || '';
+            warehousePhoneInput.value = warehouse.nomorTelepon || '';
+            warehouseCityInput.value = warehouse.kotaKabupaten || '';
+            warehouseZipInput.value = warehouse.kodePos || '';
+            submitWarehouseButton.innerHTML = '<i class="fas fa-save"></i> Perbarui';
+        }
+        window.showPage('warehouseFormPage', 'Gudang', warehouse ? 'Edit Gudang' : 'Tambah Gudang Baru');
+    }
+
+    function getWarehouseFormData() {
+        const serverData = {
+            warehouseId: warehouseIdInput.value || null,
+            namaGudang: warehouseNameInput.value.trim(),
+            emailGudang: warehouseEmailInput.value.trim(),
+            nomorTelepon: warehousePhoneInput.value.trim(),
+            kotaKabupaten: warehouseCityInput.value.trim(),
+            kodePos: warehouseZipInput.value.trim()
+        };
+        if (!serverData.namaGudang) { 
+            window.showToast('Nama Gudang wajib diisi.', 'error'); 
+            return null; 
+        }
+        return serverData;
+    }
+    
+    function resetWarehouseForm() {
+        if (warehouseForm) warehouseForm.reset();
+        if (warehouseIdInput) warehouseIdInput.value = '';
+        if (warehouseFormTitleEl) warehouseFormTitleEl.textContent = 'Tambah Gudang Baru';
+        if (submitWarehouseButton) submitWarehouseButton.innerHTML = '<i class="fas fa-plus"></i> Simpan';
+    }
+
+    // --- 3. EVENT LISTENERS ---
+    if (warehouseForm) {
+        warehouseForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = getWarehouseFormData();
+            if (!formData) return;
+            const action = formData.warehouseId ? 'updateWarehouse' : 'addWarehouse';
+            window.showLoading(true, formData.warehouseId ? 'Memperbarui...' : 'Menyimpan...');
+            google.script.run
+                .withSuccessHandler(response => {
+                    window.showLoading(false);
+                    if (response && response.success) {
+                        window.showToast(response.message, 'success');
+                        window.loadWarehouses();
+                        window.showPage('warehousesPage', 'Gudang');
+                    } else {
+                         const failMsg = response && response.message ? response.message : 'Operasi Gagal.';
+                         window.showToast(failMsg, 'error');
+                    }
+                })
+                .withFailureHandler(error => {
+                    window.showLoading(false);
+                    const errorMessage = error && error.message ? error.message : 'Terjadi kesalahan tidak dikenal.';
+                    window.showToast('Error: ' + errorMessage, 'error');
+                    console.error('Gagal menyimpan Gudang:', error);
+                })
+                [action](formData);
+        });
+    }
+
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            const target = event.target;
+            if (target.closest('#addWarehouseButton')) {
+                showWarehouseForm();
+            } else if (target.closest('#backToWarehouseListButton')) {
+                window.showPage('warehousesPage', 'Gudang');
+            } else if (target.closest('#resetWarehouseFormButton')) {
+                resetWarehouseForm();
+            } else if (target.closest('.edit-warehouse-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.warehouseId) {
+                    const warehouseToEdit = warehouseCache[row.dataset.warehouseId];
+                    if (warehouseToEdit) showWarehouseForm(warehouseToEdit);
+                }
+            } else if (target.closest('.delete-warehouse-button')) {
+                const row = target.closest('tr');
+                if (row && row.dataset.warehouseId) {
+                    const warehouseToDelete = warehouseCache[row.dataset.warehouseId];
+                    if (warehouseToDelete) {
+                        handleItemAction({
+                            itemId: warehouseToDelete.id,
+                            itemName: warehouseToDelete.name,
+                            action: 'menghapus',
+                            serverFunctionName: 'deleteWarehouse',
+                            loadDataFunction: window.loadWarehouses
+                        });
+                    }
+                }
+            }
+        });
+    }
+    
+    if (warehouseSearchInput) {
+        let searchTimeout;
+        warehouseSearchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => { window.loadWarehouses(); }, 300);
+        });
+    }
+}
+</script>
