@@ -284,21 +284,53 @@ function checkForDuplicate_(sheet, valueToCheck, columnName, excludeRowIndex = -
 // ==========================================================================
 function getProductFormDependencies() {
   try {
+    Logger.log("Memulai getProductFormDependencies (versi bersih)...");
     const sheetNames = [
       PRODUCT_SHEET_NAME, CATEGORY_SHEET_NAME, BASE_UNIT_SHEET_NAME,
       UNIT_SHEET_NAME, WAREHOUSE_SHEET_NAME, SUPPLIER_SHEET_NAME
     ];
+
     const allData = getDataFromSheets_(sheetNames);
+    Logger.log("Data mentah dari semua sheet berhasil diambil.");
+
+    // --- Langkah Kritis: Memproses produk dan langsung mencatat hasilnya ---
+    const productsRawData = allData[PRODUCT_SHEET_NAME];
+    const productsHeaderMap = { id: 'ProductID', name: 'NamaProduk', code: 'KodeProduk', cost: 'HargaPokok', stock: 'Stok' };
+    
+    // Panggil helper global kita
+    const processedProducts = _processSheetData_(productsRawData, productsHeaderMap);
+    
+    // Log hasilnya untuk debugging
+    Logger.log(`HASIL DARI _processSheetData_ untuk Produk: Ditemukan ${processedProducts.length} produk.`);
+    if (processedProducts.length > 0) {
+      Logger.log(`Contoh produk pertama yang berhasil diproses: ${JSON.stringify(processedProducts[0])}`);
+    }
+    // --- Akhir Langkah Kritis ---
 
     const dependencies = {
+      products: _processSheetData_(allData[PRODUCT_SHEET_NAME], {
+          id: 'ProductID',
+          name: 'NamaProduk',
+          code: 'KodeProduk',
+          cost: 'HargaPokok',
+          stock: 'Stok',
+          unitProdukId: 'UnitProdukID_Ref',
+          unitPembelianId: 'UnitPembelianID_Ref',
+          taxType: 'TipePajak',
+          taxValue: 'PajakPenjualan'
+      }),
       categories: _processSheetData_(allData[CATEGORY_SHEET_NAME], { id: 'CategoryID', name: 'NamaKategori' }),
       baseUnits: _processSheetData_(allData[BASE_UNIT_SHEET_NAME], { id: 'BaseUnitID', name: 'NamaUnitDasar' }),
       units: _processSheetData_(allData[UNIT_SHEET_NAME], { id: 'UnitID', name: 'NamaUnit', ref: 'BaseUnitID_Ref' }),
       warehouses: _processSheetData_(allData[WAREHOUSE_SHEET_NAME], { id: 'WarehouseID', name: 'NamaGudang' }),
       suppliers: _processSheetData_(allData[SUPPLIER_SHEET_NAME], { id: 'SupplierID', name: 'NamaPemasok' })
     };
+
+    Logger.log("Objek 'dependencies' yang akan dikirim ke frontend memiliki kunci: " + Object.keys(dependencies).join(', '));
     return { success: true, data: dependencies };
+    
   } catch (e) {
+    Logger.log("ERROR di getProductFormDependencies: " + e.toString());
     return { success: false, message: 'Gagal memuat data pendukung form: ' + e.message };
   }
 }
@@ -424,6 +456,80 @@ function getSuppliers(options = {}) {
     return { success: true, data: processedData, totalRecords: processedData.length };
   } catch (e) {
     return { success: false, message: e.message };
+  }
+}
+
+/**
+ * FUNGSI UNTUK MENGAMBIL DAFTAR PEMBELIAN (VERSI DEBUG)
+ */
+function getPurchases(options = {}) {
+  try {
+    Logger.log("--- MEMULAI getPurchases (DEBUG) ---");
+
+    // 1. Ambil data dari beberapa sheet sekaligus
+    const sheetNames = [PURCHASES_SHEET_NAME, SUPPLIER_SHEET_NAME, WAREHOUSE_SHEET_NAME];
+    const allData = getDataFromSheets_(sheetNames);
+    Logger.log("LANGKAH 1: Berhasil mengambil data mentah dari sheet: " + sheetNames.join(', '));
+
+    const purchasesValues = allData[PURCHASES_SHEET_NAME];
+    if (!purchasesValues || purchasesValues.length <= 1) {
+      Logger.log("INFO: Tidak ada data pembelian di sheet 'Purchases'. Selesai.");
+      return { success: true, data: [], totalRecords: 0 };
+    }
+
+    // 2. Buat "peta nama" untuk lookup
+    const supplierNameMap = createNameMap_(allData[SUPPLIER_SHEET_NAME], 'supplierid', 'namapemasok');
+    const warehouseNameMap = createNameMap_(allData[WAREHOUSE_SHEET_NAME], 'warehouseid', 'namagudang');
+    Logger.log("LANGKAH 2: Berhasil membuat peta nama untuk Supplier dan Gudang.");
+
+    // 3. Proses data pembelian
+    const purchasesHeaderMap = {
+        'id': 'PurchaseID', 'referenceNo': 'ReferenceNo', 'supplierId': 'SupplierID_Ref',
+        'warehouseId': 'WarehouseID_Ref', 'status': 'Status', 'grandTotal': 'GrandTotal',
+        'paymentType': 'PaymentType', 'createdAt': 'Timestamp'
+    };
+    Logger.log("LANGKAH 3: Memproses data pembelian dengan headerMap berikut: " + JSON.stringify(purchasesHeaderMap));
+    
+    let purchases = _processSheetData_(purchasesValues, purchasesHeaderMap);
+    Logger.log(`LANGKAH 3a: _processSheetData_ selesai. Ditemukan ${purchases.length} baris data pembelian.`);
+    
+    if (purchases.length === 0) {
+        Logger.log("PERINGATAN: Tidak ada data pembelian yang lolos dari _processSheetData_. Periksa header dan isi kolom ID di sheet 'Purchases'.");
+        return { success: true, data: [], totalRecords: 0 };
+    }
+
+    // 4. Tambahkan nama dan validasi tanggal
+    Logger.log("LANGKAH 4: Memulai proses penambahan nama dan validasi tanggal...");
+    purchases.forEach((p, index) => {
+        p.supplierName = supplierNameMap[p.supplierId] || `[ID: ${p.supplierId}]`;
+        p.warehouseName = warehouseNameMap[p.warehouseId] || `[ID: ${p.warehouseId}]`;
+        
+        if (p.createdAt && p.createdAt instanceof Date) {
+          p.createdAtValue = p.createdAt.getTime();
+        } else {
+          const parsedDate = new Date(p.createdAt);
+          p.createdAtValue = !isNaN(parsedDate) ? parsedDate.getTime() : 0;
+        }
+        // Log untuk baris pertama saja agar tidak terlalu banyak
+        if (index === 0) {
+          Logger.log("Contoh data baris pertama setelah diproses: " + JSON.stringify(p));
+        }
+    });
+    Logger.log("LANGKAH 4a: Selesai memproses nama dan tanggal.");
+
+    // 5. Urutkan berdasarkan tanggal terbaru
+    purchases.sort((a, b) => b.createdAtValue - a.createdAtValue);
+    Logger.log("LANGKAH 5: Berhasil mengurutkan data.");
+    
+    Logger.log("--- getPurchases (DEBUG) SELESAI DENGAN SUKSES ---");
+    return { success: true, data: purchases, totalRecords: purchases.length };
+
+  } catch (e) {
+    Logger.log("!!!!!!!! ERROR BESAR di getPurchases !!!!!!!! ");
+    Logger.log("Pesan Error: " + e.message);
+    Logger.log("Stack Trace: " + e.stack);
+    Logger.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    return { success: false, message: "Terjadi error internal di server: " + e.message };
   }
 }
 
@@ -795,7 +901,7 @@ function addProduct(productData) {
     return { success: false, message: 'Stok Minimum harus berupa angka non-negatif jika diisi.' };
   }
   if (productData.pajakPenjualan !== null && productData.pajakPenjualan !== undefined && (isNaN(parseFloat(productData.pajakPenjualan)) || parseFloat(productData.pajakPenjualan) < 0 || parseFloat(productData.pajakPenjualan) > 100) ) {
-    return { success: false, message: 'Pajak Penjualan harus antara 0-100 jika diisi.' };
+    return { success: false, message: 'Pajak per Produk harus antara 0-100 jika diisi.' };
   }
   if (productData.batasKuantitasPembelian !== null && productData.batasKuantitasPembelian !== undefined && (isNaN(parseFloat(productData.batasKuantitasPembelian)) || parseFloat(productData.batasKuantitasPembelian) < 0) ) {
     return { success: false, message: 'Batas Kuantitas Pembelian harus berupa angka positif jika diisi.' };
@@ -1384,6 +1490,57 @@ function deleteWarehouse(warehouseId) {
 // ==========================================================================
 // FUNGSI-FUNGSI UNTUK MODUL PEMASOK (Suppliers)
 // ==========================================================================
+function addSupplier(data) {
+  Logger.log("LOG_INFO: addSupplier - Received: " + JSON.stringify(data));
+  const namaPemasok = String(data.namaPemasok || '').trim();
+  if (!namaPemasok) {
+    return { success: false, message: 'Nama Pemasok wajib diisi.' };
+  }
+
+  try {
+    const sheet = getSheet_(SUPPLIER_SHEET_NAME);
+    if (!sheet) return { success: false, message: `Sheet "${SUPPLIER_SHEET_NAME}" tidak ditemukan.` };
+
+    // Gunakan helper untuk cek duplikasi nama
+    if (checkForDuplicate_(sheet, namaPemasok, 'namapemasok')) {
+      return { success: false, message: 'Nama Pemasok sudah ada.' };
+    }
+
+    // Gunakan helper untuk membuat ID baru
+    const newId = generateNextId_(sheet, 'supplierid', 'SUP');
+    
+    // Siapkan data untuk baris baru
+    const newRowData = {
+      supplierid: newId,
+      namapemasok: namaPemasok,
+      nomortelepon: String(data.nomorTelepon || '').trim() ? "'" + String(data.nomorTelepon).trim() : '',
+      emailpemasok: String(data.emailPemasok || '').trim(),
+      alamatpemasok: String(data.alamatPemasok || '').trim(),
+      dibuatpada: new Date()
+    };
+
+    // Ambil header untuk memastikan urutan kolom benar
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).toLowerCase().replace(/ /g, ''));
+    const newRow = headers.map(header => newRowData[header] !== undefined ? newRowData[header] : '');
+    
+    sheet.appendRow(newRow);
+    SpreadsheetApp.flush();
+
+    Logger.log("LOG_INFO: addSupplier - Supplier added: " + newId);
+    return { 
+        success: true, 
+        message: 'Pemasok berhasil ditambahkan!',
+        supplier: { 
+            supplierId: newId, 
+            namaPemasok: manualEscapeHtml(namaPemasok) 
+        }
+    };
+  } catch (e) {
+    Logger.log("LOG_ERROR: Error in addSupplier: " + e.toString() + "\nStack: " + e.stack);
+    return { success: false, message: 'Gagal menambahkan Pemasok: ' + e.message };
+  }
+}
+
 function updateSupplier(data) {
   Logger.log("LOG_INFO: updateSupplier - Received: " + JSON.stringify(data));
   const id = String(data.supplierId || '').trim();
@@ -1688,38 +1845,67 @@ function addPurchase(purchaseData) {
       return { success: false, message: 'Satu atau lebih sheet penting (Purchases, PurchaseItems, StockInventory) tidak ditemukan.' };
     }
 
-    // 1. Buat Primary Key Internal (tidak berubah)
+    // Buat ID dan Nomor Referensi
     const newPurchaseId = generateNextId_(purchasesSheet, 'purchaseid', 'PUR', 5);
-    // 2. Buat Nomor Referensi yang Dilihat Pengguna (BARU)
-    const newReferenceNo = generateReferenceNumber_(purchasesSheet, 'PU', 'referenceno'); 
-    
+    const newReferenceNo = generateReferenceNumber_(purchasesSheet, 'PU', 'referenceno');
     const timestamp = new Date();
-    let totalAmount = 0;
+    let totalAmount = 0; // Ini adalah total subtotal produk
 
     // Proses setiap item yang dibeli
     for (const item of purchaseData.items) {
       if (!item.productId || !item.quantity || !item.costPrice || Number(item.quantity) <= 0) {
         continue; // Lewati item yang tidak valid
       }
+
+      const quantity = Number(item.quantity);
+      const costPrice = Number(item.costPrice);
+      const itemDiscount = 0; // Placeholder untuk fitur diskon per item nanti
+      const itemTax = 0;      // Placeholder untuk fitur pajak per item nanti
+      const subtotal = (quantity * costPrice) - itemDiscount + itemTax;
+      totalAmount += subtotal;
+
+      // 1. Catat di PurchaseItems
+      const newItemId = generateNextId_(purchaseItemsSheet, 'purchaseitemid', 'PI', 6);
+      const purchaseItemRow = [newItemId, newPurchaseId, item.productId, quantity, costPrice, itemDiscount, itemTax, subtotal];
+      purchaseItemsSheet.appendRow(purchaseItemRow);
+
+      // 2. Catat di StockLedger (Gudang diambil dari data utama)
+      _addStockLedgerEntry_({
+        productId: item.productId,
+        warehouseId: purchaseData.warehouseId,
+        transactionType: 'PEMBELIAN',
+        quantityChange: quantity,
+        referenceId: newPurchaseId, // Mereferensikan ID internal pembelian
+        notes: `Pembelian dengan No. Ref: ${newReferenceNo}`
+      });
+
+      // 3. Update cache di StockInventory
+      const stockUpdateSuccess = _updateStockInInventory(inventorySheet, item.productId, purchaseData.warehouseId, quantity);
+      if (stockUpdateSuccess) {
+         _updateTotalStockInProducts(SpreadsheetApp.getActiveSpreadsheet(), item.productId);
+      }
     }
-    
-    // Kalkulasi Grand Total
-    const orderTax = Number(purchaseData.orderTax) || 0;
+
+    // Kalkulasi Grand Total dengan formula yang benar
+    const orderTaxPercentage = Number(purchaseData.orderTax) || 0;
     const orderDiscount = Number(purchaseData.orderDiscount) || 0;
     const shipping = Number(purchaseData.shipping) || 0;
-    const grandTotal = totalAmount + orderTax - orderDiscount + shipping;
     
-    // Terakhir, catat di Purchases (Master) menggunakan nomor referensi yang baru dibuat
+    const dpp = totalAmount - orderDiscount;
+    const taxValue = (orderTaxPercentage / 100) * dpp;
+    const grandTotal = dpp + taxValue + shipping;
+
+    // Terakhir, catat di Purchases (Master)
     const purchaseRow = [
       newPurchaseId, 
       timestamp, 
       purchaseData.warehouseId, 
       purchaseData.supplierId, 
       newReferenceNo, // Menggunakan nomor referensi dari sistem
-      orderTax, 
+      taxValue, // Simpan nilai pajak dalam Rupiah
       orderDiscount, 
       shipping, 
-      grandTotal, 
+      grandTotal, // Simpan Grand Total yang sudah benar
       purchaseData.paymentType, 
       purchaseData.status, 
       purchaseData.notes
@@ -1735,13 +1921,233 @@ function addPurchase(purchaseData) {
 }
 
 /**
+ * FUNGSI UNTUK MENGAMBIL DETAIL SATU PEMBELIAN (VERSI DISEMPURNAKAN)
+ * Mengambil data pembelian spesifik DAN semua data pendukung untuk form.
+ * @param {string} purchaseId - ID dari pembelian yang akan diambil.
+ */
+function getPurchaseById(purchaseId) {
+  if (!purchaseId) {
+    return { success: false, message: 'Purchase ID tidak valid.' };
+  }
+
+  try {
+    // Ambil juga data pendukung, sama seperti getProductFormDependencies
+    const dependenciesData = getProductFormDependencies();
+    if (!dependenciesData.success) {
+      return dependenciesData; // Kembalikan error jika gagal mengambil data pendukung
+    }
+
+    const allData = getDataFromSheets_([PURCHASES_SHEET_NAME, PURCHASE_ITEMS_SHEET_NAME]);
+    const purchasesValues = allData[PURCHASES_SHEET_NAME];
+    const purchaseItemsValues = allData[PURCHASE_ITEMS_SHEET_NAME];
+
+    // 1. Cari data pembelian utama
+    const purchaseHeaderMap = {
+        'id': 'PurchaseID', 'referenceNo': 'ReferenceNo', 'supplierId': 'SupplierID_Ref',
+        'warehouseId': 'WarehouseID_Ref', 'status': 'Status', 'grandTotal': 'GrandTotal',
+        'paymentType': 'PaymentType', 'createdAt': 'Timestamp', 'orderTax': 'OrderTax',
+        'discount': 'Discount', 'shipping': 'Shipping', 'notes': 'Notes'
+    };
+    const allPurchases = _processSheetData_(purchasesValues, purchaseHeaderMap);
+    const purchaseData = allPurchases.find(p => p.id === purchaseId);
+
+    if (!purchaseData) {
+      return { success: false, message: 'Data pembelian dengan ID tersebut tidak ditemukan.' };
+    }
+
+    // 2. Cari semua item yang terkait dengan pembelian ini
+    const itemHeaderMap = {
+        'id': 'PurchaseItemID', 'purchaseIdRef': 'PurchaseID_Ref', 'productId': 'ProductID_Ref',
+        'quantity': 'Quantity', 'costPrice': 'CostPrice', 
+        'discountValue': 'Discount',
+        'taxValue': 'Tax'
+    };
+    const allItems = _processSheetData_(purchaseItemsValues, itemHeaderMap);
+    const relatedItems = allItems.filter(item => item.purchaseIdRef === purchaseId);
+
+    // 3. Gabungkan semua data menjadi satu objek respons
+    const responseData = {
+      purchase: purchaseData,
+      dependencies: dependenciesData.data // Ambil data pendukung dari fungsi yang sudah ada
+    };
+    
+    // Tambahkan detail produk ke setiap item
+    responseData.purchase.items = relatedItems.map(item => {
+        const productDetail = responseData.dependencies.products.find(p => p.id === item.productId);
+        return { ...item, ...productDetail }; // Gabungkan data item dengan detail produk
+    });
+
+    return { success: true, data: responseData };
+
+  } catch (e) {
+    Logger.log("ERROR in getPurchaseById: " + e.toString());
+    return { success: false, message: 'Gagal mengambil detail pembelian: ' + e.message };
+  }
+}
+
+function updatePurchase(purchaseData) {
+  const purchaseId = purchaseData.purchaseId;
+  if (!purchaseId) {
+    return { success: false, message: 'ID Pembelian tidak valid untuk pembaruan.' };
+  }
+
+  try {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const purchasesSheet = getSheet_(PURCHASES_SHEET_NAME);
+    const purchaseItemsSheet = getSheet_(PURCHASE_ITEMS_SHEET_NAME);
+    const inventorySheet = getSheet_(STOCK_INVENTORY_SHEET_NAME);
+
+    // --- LOGIKA PEMBARUAN ---
+    // 1. Hapus semua item lama dan kembalikan stoknya (metode delete-then-re-add)
+    const itemsData = purchaseItemsSheet.getDataRange().getValues();
+    const itemsHeaders = itemsData[0].map(h => h.toLowerCase().replace(/ /g, ''));
+    const itemPurchaseIdRefIndex = itemsHeaders.indexOf('purchaseid_ref');
+    const itemProductIdIndex = itemsHeaders.indexOf('productid_ref');
+    const itemQtyIndex = itemsHeaders.indexOf('quantity');
+    
+    const purchaseRowIndex = findRowIndexByValue_(purchasesSheet, purchaseId, 'purchaseid');
+    const warehouseId = purchasesSheet.getRange(purchaseRowIndex, itemsHeaders.indexOf('warehouseid_ref') + 1).getValue();
+
+    const oldRowsToDelete = [];
+    for (let i = itemsData.length - 1; i >= 1; i--) {
+      if (itemsData[i][itemPurchaseIdRefIndex] == purchaseId) {
+        const oldProductId = itemsData[i][itemProductIdIndex];
+        const oldQuantity = Number(itemsData[i][itemQtyIndex]);
+        // Kembalikan stok lama
+        _updateStockInInventory(inventorySheet, oldProductId, warehouseId, -oldQuantity);
+        _updateTotalStockInProducts(ss, oldProductId);
+        _addStockLedgerEntry_({
+          productId: oldProductId, warehouseId: warehouseId, transactionType: 'EDIT_PEMBELIAN_REVERSE',
+          quantityChange: -oldQuantity, referenceId: purchaseId, notes: 'Stok dikembalikan karena update.'
+        });
+        oldRowsToDelete.push(i + 1);
+      }
+    }
+    oldRowsToDelete.forEach(rowIndex => purchaseItemsSheet.deleteRow(rowIndex));
+
+    // 2. Tambahkan kembali item yang baru dan update stoknya
+    let totalAmount = 0;
+    for (const item of purchaseData.items) {
+      const quantity = Number(item.quantity);
+      const costPrice = Number(item.costPrice);
+      const subtotal = quantity * costPrice;
+      totalAmount += subtotal;
+
+      const newItemId = generateNextId_(purchaseItemsSheet, 'purchaseitemid', 'PI', 6);
+      const purchaseItemRow = [newItemId, purchaseId, item.productId, quantity, costPrice, 0, 0, subtotal];
+      purchaseItemsSheet.appendRow(purchaseItemRow);
+
+      _updateStockInInventory(inventorySheet, item.productId, warehouseId, quantity);
+      _updateTotalStockInProducts(ss, item.productId);
+      _addStockLedgerEntry_({
+        productId: item.productId, warehouseId: warehouseId, transactionType: 'EDIT_PEMBELIAN_ADD',
+        quantityChange: quantity, referenceId: purchaseId, notes: 'Stok ditambahkan karena update.'
+      });
+    }
+
+    // 3. Hitung ulang Grand Total dan perbarui baris pembelian utama
+    const dpp = totalAmount - (purchaseData.orderDiscount || 0);
+    const taxValue = (dpp * (purchaseData.orderTax || 0)) / 100;
+    const grandTotal = dpp + taxValue + (purchaseData.shipping || 0);
+
+    purchasesSheet.getRange(purchaseRowIndex, headers.indexOf('grandtotal') + 1).setValue(grandTotal);
+    // ... (update kolom lain seperti status, notes, dll.)
+
+    lock.releaseLock();
+    return { success: true, message: 'Pembelian berhasil diperbarui!' };
+
+  } catch(e) {
+    Logger.log("ERROR in updatePurchase: " + e.toString());
+    return { success: false, message: 'Gagal memperbarui pembelian: ' + e.message };
+  }
+}
+
+function deletePurchase(purchaseId) {
+  if (!purchaseId) {
+    return { success: false, message: 'Purchase ID tidak valid.' };
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const purchasesSheet = getSheet_(PURCHASES_SHEET_NAME);
+  const purchaseItemsSheet = getSheet_(PURCHASE_ITEMS_SHEET_NAME);
+  const inventorySheet = getSheet_(STOCK_INVENTORY_SHEET_NAME);
+
+  if (!purchasesSheet || !purchaseItemsSheet || !inventorySheet) {
+    return { success: false, message: 'Satu atau lebih sheet penting tidak ditemukan.' };
+  }
+
+  try {
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000); // Menunggu maksimal 30 detik
+
+    // 1. Cari baris pembelian utama
+    const purchaseRowIndex = findRowIndexByValue_(purchasesSheet, purchaseId, 'purchaseid');
+    if (purchaseRowIndex === -1) {
+      return { success: false, message: 'Data pembelian tidak ditemukan.' };
+    }
+    const purchaseRowData = purchasesSheet.getRange(purchaseRowIndex, 1, 1, purchasesSheet.getLastColumn()).getValues()[0];
+    const warehouseIdRefIndex = purchasesSheet.getRange(1, 1, 1, purchasesSheet.getLastColumn()).getValues()[0].map(h => h.toLowerCase().replace(/ /g, '')).indexOf('warehouseid_ref');
+    const warehouseId = purchaseRowData[warehouseIdRefIndex];
+
+    // 2. Cari semua item terkait di PurchaseItems
+    const itemsData = purchaseItemsSheet.getDataRange().getValues();
+    const itemsHeaders = itemsData[0].map(h => h.toLowerCase().replace(/ /g, ''));
+    const itemPurchaseIdRefIndex = itemsHeaders.indexOf('purchaseid_ref');
+    const itemProductIdIndex = itemsHeaders.indexOf('productid_ref');
+    const itemQtyIndex = itemsHeaders.indexOf('quantity');
+    
+    const rowsToDelete = [];
+    for (let i = itemsData.length - 1; i >= 1; i--) {
+      if (itemsData[i][itemPurchaseIdRefIndex] == purchaseId) {
+        const productId = itemsData[i][itemProductIdIndex];
+        const quantity = Number(itemsData[i][itemQtyIndex]);
+
+        // 3. Kembalikan stok (Update inventaris dengan nilai negatif)
+        _updateStockInInventory(inventorySheet, productId, warehouseId, -quantity);
+        _updateTotalStockInProducts(ss, productId);
+
+        // 4. Catat pembalikan stok di StockLedger
+        _addStockLedgerEntry_({
+          productId: productId,
+          warehouseId: warehouseId,
+          transactionType: 'HAPUS_PEMBELIAN',
+          quantityChange: -quantity, // Kuantitas negatif karena stok dikembalikan
+          referenceId: purchaseId,
+          notes: `Pembelian dengan ID ${purchaseId} dihapus.`
+        });
+        
+        rowsToDelete.push(i + 1);
+      }
+    }
+
+    // 5. Hapus baris dari sheet (dari bawah ke atas untuk menghindari pergeseran indeks)
+    rowsToDelete.forEach(rowIndex => {
+      purchaseItemsSheet.deleteRow(rowIndex);
+    });
+    purchasesSheet.deleteRow(purchaseRowIndex);
+
+    lock.releaseLock();
+    return { success: true, message: 'Pembelian berhasil dihapus.' };
+
+  } catch (e) {
+    Logger.log("ERROR in deletePurchase: " + e.toString());
+    return { success: false, message: 'Gagal menghapus pembelian: ' + e.message };
+  }
+}
+
+
+
+/**
  * FUNGSI DEBUGGING
  * Fungsi ini hanya untuk memeriksa nama header asli dari sheet.
  * Tidak akan mempengaruhi fungsi aplikasi lainnya.
  */
 function DEBUG_cekNamaHeader() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetNames = ['Warehouses', 'Suppliers']; // Nama sheet yang mau kita cek
+  const sheetNames = ['Purchases']; // Nama sheet yang mau kita cek
 
   sheetNames.forEach(name => {
     const sheet = ss.getSheetByName(name);
