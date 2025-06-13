@@ -17,9 +17,8 @@ function initializeProducts() {
     let allUnitsData = [];
     let currentPage = 1;
     let recordsPerPage = 10;
-    
-    // --- 2. FUNGSI-FUNGSI LOKAL ---
 
+    // --- 1. FUNGSI LOAD PRODUCTS DARI SERVER ---
     /**
      * Memuat data produk dari server berdasarkan state saat ini.
      */
@@ -83,12 +82,20 @@ function initializeProducts() {
             row.dataset.productId = product.productId;
 
             row.insertCell(0).textContent = product.productName || 'N/A';
-            row.insertCell(1).textContent = product.kodeProduk || 'N/A';
+
+            // KOLOM REFERENSI
+            row.insertCell(1).innerHTML = `<span class="cell-badge badge-code">${product.kodeProduk || 'N/A'}</span>`;
+
             row.insertCell(2).textContent = `Rp ${Number(product.hargaJual || 0).toLocaleString('id-ID')}`;
-            row.insertCell(3).textContent = product.unitProdukName || 'N/A';
+
+            // KOLOM UNIT
+            row.insertCell(3).innerHTML = `<span class="cell-badge badge-unit">${product.unitProdukName || 'N/A'}</span>`;
+
             row.insertCell(4).textContent = product.stok || 0;
-            const dateCell = row.insertCell(5);
-            dateCell.textContent = product.dibuatPada ? new Date(product.dibuatPada).toLocaleDateString('id-ID') : 'N/A';
+
+            // KOLOM DIBUAT PADA
+            const dateCell = product.dibuatPada ? new Date(product.dibuatPada).toLocaleDateString('id-ID') : 'N/A';
+            row.insertCell(5).innerHTML = `<span class="cell-badge badge-date">${dateCell}</span>`;
             
             const actionsCell = row.insertCell(6);
             actionsCell.classList.add('action-buttons');
@@ -97,6 +104,7 @@ function initializeProducts() {
         });
     }
 
+    // --- 2. FUNGSI-FUNGSI LOKAL ---
     /**
      * Menampilkan dan mengisi form produk, baik untuk menambah baru atau mengedit.
      */
