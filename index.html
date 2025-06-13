@@ -159,7 +159,7 @@
                         <div class="form-row">
                             <div class="form-group form-group-quarter"><label for="productCostPrice">Harga Pokok <span class="required-asterisk">*</span></label><input type="number" id="productCostPrice" min="0" step="any" required></div>
                             <div class="form-group form-group-quarter"><label for="productSellingPrice">Harga Jual <span class="required-asterisk">*</span></label><input type="number" id="productSellingPrice" min="0" step="any" required></div>
-                            <div class="form-group form-group-quarter"><label for="productSalesTax">Pajak Penjualan (%)</label><input type="number" id="productSalesTax" min="0" max="100" step="any"></div>
+                            <div class="form-group form-group-quarter"><label for="productSalesTax">Pajak per Produk (%)</label><input type="number" id="productSalesTax" min="0" max="100" step="any"></div>
                             <div class="form-group form-group-quarter"><label for="productTaxType">Tipe Pajak <span class="required-asterisk">*</span></label><select id="productTaxType" required><option value="Eksklusif" selected>Eksklusif</option><option value="Inklusif">Inklusif</option></select></div>
                         </div>
                         <h4>Stok</h4>
@@ -179,7 +179,7 @@
             <section class="page-section" id="categoriesPage">
                 <div class="list-page-controls">
                     <div class="input-with-icon">
-                      <i class="fas-fa-search search-bar-icon-prefix"></i>
+                      <i class="fas fa-search search-bar-icon-prefix"></i>
                       <input type="text" id="categorySearchInput" class="input-field-with-icon-prefix" placeholder="Cari kategori...">
                     </div>
                     <button id="addCategoryButton" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah Kategori</button>
@@ -221,7 +221,7 @@
             <section class="page-section" id="unitsPage">
                 <div class="list-page-controls">
                     <div class="input-with-icon">
-                      <i class="fas-fa-search search-bar-icon-prefix"></i>
+                      <i class="fas fa-search search-bar-icon-prefix"></i>
                       <input type="text" id="unitSearchInput" class="input-field-with-icon-prefix" placeholder="Cari unit...">
                     </div>
                     <button id="addUnitButton" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah Unit</button>
@@ -232,7 +232,7 @@
                             <tr>
                                 <th>Nama Unit</th>
                                 <th>Singkatan</th>
-                                <th>Unit Dasar Referensi</th>
+                                <th>Unit Dasar Acuan</th>
                                 <th style="width: 150px;">Dibuat Pada</th>
                                 <th style="width: 120px;">Aksi</th>
                             </tr>
@@ -261,7 +261,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="unitBaseUnitRefSelect">Unit Dasar Referensi <span class="required-asterisk">*</span></label>
+                        <label for="unitBaseUnitRefSelect">Unit Dasar Acuan <span class="required-asterisk">*</span></label>
                         <select id="unitBaseUnitRefSelect" required></select>
                     </div>
                     <div class="button-group">
@@ -275,7 +275,7 @@
             <section class="page-section" id="base-unitsPage">
                 <div class="list-page-controls">
                     <div class="input-with-icon">
-                      <i class="fas-fa-search search-bar-icon-prefix"></i>
+                      <i class="fas fa-search search-bar-icon-prefix"></i>
                       <input type="text" id="baseUnitSearchInput" class="input-field-with-icon-prefix" placeholder="Cari unit dasar...">
                     </div>
                     <button id="addBaseUnitButton" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah Unit Dasar</button>
@@ -316,7 +316,7 @@
             <section class="page-section" id="suppliersPage">
                 <div class="list-page-controls">
                     <div class="input-with-icon">
-                      <i class="fas-fa-search search-bar-icon-prefix"></i>
+                      <i class="fas fa-search search-bar-icon-prefix"></i>
                       <input type="text" id="supplierSearchInput" class="input-field-with-icon-prefix" placeholder="Cari pemasok...">
                     </div>
                     <button id="addSupplierButton" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah Pemasok</button>
@@ -373,7 +373,7 @@
             <section class="page-section" id="warehousesPage">
                 <div class="list-page-controls">
                     <div class="input-with-icon">
-                      <i class="fas-fa-search search-bar-icon-prefix"></i>
+                      <i class="fas fa-search search-bar-icon-prefix"></i>
                       <input type="text" id="warehouseSearchInput" class="input-field-with-icon-prefix" placeholder="Cari gudang...">
                     </div>
                     <button id="addWarehouseButton" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah Gudang</button>
@@ -439,7 +439,7 @@
                 <div class="list-page-controls">
                     <div class="input-with-icon">
                          <i class="fas fa-search search-bar-icon-prefix"></i>
-                         <input type="text" id="purchaseSearchInput" class="input-field-with-icon-prefix" placeholder="Cari berdasarkan referensi atau pemasok...">
+                         <input type="text" id="purchaseSearchInput" class="input-field-with-icon-prefix" placeholder="Cari referensi atau pemasok...">
                     </div>
                     <button id="addPurchaseButton" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah Pembelian</button>
                 </div>
@@ -475,6 +475,7 @@
                 </div>
 
                 <form id="purchaseForm">
+                    <input type="hidden" id="purchaseIdInput">
                     <div class="form-row">
                         <div class="form-group form-group-quarter">
                             <label for="purchaseDate">Tanggal <span class="required-asterisk">*</span></label>
@@ -500,11 +501,11 @@
 
                     <div class="form-group">
                         <label for="purchaseProductSearch">Produk</label>
-                        <div class="input-with-icon">
+                        <div id="purchaseSearchWrapper" class="input-with-icon" style="width: 100%;">
                             <i class="fas fa-search search-bar-icon-prefix"></i>
                             <input type="text" id="purchaseProductSearch" class="input-field-with-icon-prefix" placeholder="Cari Produk berdasarkan Kode atau Nama...">
                         </div>
-                        </div>
+                    </div>
 
                     <div class="form-group">
                         <label>Rincian Pesanan <span class="required-asterisk">*</span></label>
@@ -513,7 +514,7 @@
                                 <thead>
                                     <tr>
                                         <th style="min-width: 250px;">PRODUK</th>
-                                        <th style="width: 150px;">HARGA UNIT</th>
+                                        <th style="width: 150px;">HARGA POKOK BERSIH</th>
                                         <th style="width: 100px;">STOK</th>
                                         <th style="width: 100px;">QTY</th>
                                         <th style="width: 150px;">DISKON</th>
@@ -533,23 +534,57 @@
                     
                     <hr class="form-separator">
 
-                    <div class="purchase-summary-container">
+                    <div class="purchase-final-section">
+                        <!-- Area Ringkasan Kanan (Sekarang di atas) -->
+                        <div class="purchase-totals-summary">
+                            <div class="total-row">
+                                <!-- Nama label di ringkasan juga diubah -->
+                                <span>Pajak per Faktur</span>
+                                <span id="summaryOrderTax">Rp 0.00 (0%)</span>
+                            </div>
+                            <div class="total-row">
+                                <span>Diskon</span>
+                                <span id="summaryDiscount">Rp 0.00</span>
+                            </div>
+                            <div class="total-row">
+                                <span>Pengiriman</span>
+                                <span id="summaryShipping">Rp 0.00</span>
+                            </div>
+                            <div class="total-row grand-total">
+                                <span>GRAND TOTAL</span>
+                                <span id="summaryGrandTotal">Rp 0.00</span>
+                            </div>
+                        </div>
+
+                        <!-- Area Input Bawah -->
                         <div class="purchase-inputs-area">
+                            <hr class="form-separator">
                             <div class="form-row">
                                 <div class="form-group form-group-third">
-                                    <label for="purchaseOrderTax">Pajak Pesanan</label>
-                                    <input type="number" id="purchaseOrderTax" value="0" min="0" step="any">
+                                    <!-- POIN 1: Label diubah -->
+                                    <label for="purchaseOrderTax">Pajak per Faktur</label>
+                                    <!-- POIN 3: Input diubah untuk menampilkan '%' -->
+                                    <div class="input-with-symbol">
+                                        <input type="number" id="purchaseOrderTax" value="0" min="0" step="any" placeholder="0">
+                                        <span>%</span>
+                                    </div>
                                 </div>
                                 <div class="form-group form-group-third">
                                     <label for="purchaseDiscount">Diskon</label>
-                                    <input type="number" id="purchaseDiscount" value="0" min="0" step="any">
+                                    <div class="input-with-symbol">
+                                        <input type="number" id="purchaseDiscount" value="0" min="0" step="any" placeholder="0">
+                                        <span>Rp</span>
+                                    </div>
                                 </div>
                                 <div class="form-group form-group-third">
                                     <label for="purchaseShipping">Pengiriman</label>
-                                    <input type="number" id="purchaseShipping" value="0" min="0" step="any">
+                                    <div class="input-with-symbol">
+                                        <input type="number" id="purchaseShipping" value="0" min="0" step="any" placeholder="0">
+                                        <span>Rp</span>
+                                    </div>
                                 </div>
                             </div>
-                             <div class="form-row">
+                            <div class="form-row">
                                 <div class="form-group form-group-half">
                                     <label for="purchaseStatus">Status <span class="required-asterisk">*</span></label>
                                     <select id="purchaseStatus" required>
@@ -573,25 +608,6 @@
                                 <textarea id="purchaseNote" rows="3" placeholder="Masukkan catatan untuk pembelian ini..."></textarea>
                             </div>
                         </div>
-
-                        <div class="purchase-totals-summary">
-                            <div class="total-row">
-                                <span>Pajak Pesanan</span>
-                                <span id="summaryOrderTax">Rp 0.00</span>
-                            </div>
-                            <div class="total-row">
-                                <span>Diskon</span>
-                                <span id="summaryDiscount">Rp 0.00</span>
-                            </div>
-                             <div class="total-row">
-                                <span>Pengiriman</span>
-                                <span id="summaryShipping">Rp 0.00</span>
-                            </div>
-                            <div class="total-row grand-total">
-                                <span>GRAND TOTAL</span>
-                                <span id="summaryGrandTotal">Rp 0.00</span>
-                            </div>
-                        </div>
                     </div>
 
                     <div class="button-group">
@@ -600,7 +616,59 @@
                     </div>
                 </form>
             </section>
-
+            <div class="modal-overlay" id="editItemModal" style="display: none;">
+                <div class="modal-dialog">
+                    <div class="modal-header">
+                        <h3 id="editItemModalTitle">Edit Item</h3>
+                        <button class="modal-close-button" type="button">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="editItemForm">
+                            <div class="form-group">
+                                <label for="modalProductCost">Harga Pokok Acuan</label>
+                                <div class="input-with-symbol">
+                                    <input type="number" id="modalProductCost" min="0" step="any">
+                                    <span>Rp</span>
+                                </div>
+                            </div>
+                             <div class="form-group">
+                                <label for="modalTaxType">Tipe Pajak</label>
+                                <select id="modalTaxType">
+                                    <option value="Eksklusif">Eksklusif</option>
+                                    <option value="Inklusif">Inklusif</option>
+                                </select>
+                            </div>
+                             <div class="form-group">
+                                <label for="modalOrderTax">Pajak Produk</label>
+                                <div class="input-with-symbol">
+                                    <input type="number" id="modalOrderTax" value="0" min="0" step="any">
+                                    <span>%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="modalDiscountType">Tipe Diskon</label>
+                                <select id="modalDiscountType">
+                                    <option value="Fixed">Tetap (Rp)</option>
+                                    <option value="Percentage">Persen (%)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="modalDiscount">Diskon</label>
+                                <input type="number" id="modalDiscount" value="0" min="0" step="any">
+                            </div>
+                            <div class="form-group">
+                                <label for="modalPurchaseUnit">Unit Pembelian</label>
+                                <select id="modalPurchaseUnit">
+                                    </select>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary modal-cancel-button">Batal</button>
+                        <button type="button" id="saveItemChangesButton" class="btn btn-primary">Simpan</button>
+                    </div>
+                </div>
+            </div>
         </div> <!-- Akhir .content-area -->
     </main> <!-- Akhir .main-content -->
 
